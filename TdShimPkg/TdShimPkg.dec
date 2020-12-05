@@ -1,0 +1,46 @@
+## @file
+#  EFI/Framework TDX Virtual Machine Firmware (TDVF) platform
+#
+#  Copyright (c) 2006 - 2019, Intel Corporation. All rights reserved.<BR>
+#
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+##
+
+[Defines]
+  DEC_SPECIFICATION              = 0x00010005
+  PACKAGE_NAME                   = TdShimPkg
+  PACKAGE_GUID                   = D72416C5-18D5-4528-9E03-B436DF48BDCA
+  PACKAGE_VERSION                = 0.1y
+
+[Includes]
+  Include
+
+[LibraryClasses]
+
+[Guids]
+  gUefiTdShimPkgTokenSpaceGuid          = {0xf706dd8f, 0xeebe, 0x11e9, {0x99, 0x14, 0xe4, 0xa7, 0xa0, 0xda, 0xe6, 0x51}}
+
+[PcdsFixedAtBuild]
+  gUefiTdShimPkgTokenSpaceGuid.PcdTempRamBase|0x0|UINT64|0x20000
+  gUefiTdShimPkgTokenSpaceGuid.PcdTempRamSize|0x0|UINT64|0x20001
+  gUefiTdShimPkgTokenSpaceGuid.PcdTempStackBase|0x0|UINT64|0x20002
+  gUefiTdShimPkgTokenSpaceGuid.PcdTempStackSize|0x0|UINT64|0x20003
+  gUefiTdShimPkgTokenSpaceGuid.PcdTdHobBase|0x0|UINT64|0x20004
+  gUefiTdShimPkgTokenSpaceGuid.PcdTdHobSize|0x0|UINT64|0x20005
+  gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxBase|0x0|UINT64|0x20006
+  gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxSize|0x0|UINT64|0x20007
+
+  gUefiTdShimPkgTokenSpaceGuid.PcdUseTdxIo|TRUE|BOOLEAN|0x2000b
+  gUefiTdShimPkgTokenSpaceGuid.PcdUseTdxMmio|TRUE|BOOLEAN|0x2000c
+  gUefiTdShimPkgTokenSpaceGuid.PcdUseTdxMsr|TRUE|BOOLEAN|0x2000d
+  gUefiTdShimPkgTokenSpaceGuid.PcdUseTdxAcceptPage|TRUE|BOOLEAN|0x2000e
+
+  # If set to TRUE, this will bypass setting or clearing TDX shared bit in PTE
+  gUefiTdShimPkgTokenSpaceGuid.PcdTdxDisableSharedMask|FALSE|BOOLEAN|0x2000f
+
+  gUefiTdShimPkgTokenSpaceGuid.PcdBfvBase|0x0|UINT32|0x2001B
+  gUefiTdShimPkgTokenSpaceGuid.PcdBfvSize|0x0|UINT32|0x2001C
+  gUefiTdShimPkgTokenSpaceGuid.PcdUseTdxEmulation|0x0|UINT32|0x2001D
+  gUefiTdShimPkgTokenSpaceGuid.PcdTdxAcceptPageChunkSize|0x2000|UINT64|0x2001E
+  gUefiTdShimPkgTokenSpaceGuid.PcdIgnoreVeHalt|FALSE|BOOLEAN|0x2001F

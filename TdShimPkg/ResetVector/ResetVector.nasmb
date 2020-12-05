@@ -1,0 +1,59 @@
+;------------------------------------------------------------------------------
+; @file
+; This file includes all other code files to assemble the reset vector code
+;
+; Copyright (c) 2008 - 2013, Intel Corporation. All rights reserved.<BR>
+; SPDX-License-Identifier: BSD-2-Clause-Patent
+;
+;------------------------------------------------------------------------------
+
+;
+; If ARCH_X64 isn't defined, then try to include
+; Base.h to use the C pre-processor to determine the architecture.
+;
+
+%ifndef ARCH_X64
+#include <Base.h>
+#if defined (MDE_CPU_X64)
+  %define ARCH_X64
+#endif
+%endif
+
+%ifndef ARCH_X64
+%error "ARCH_X64 must be defined."
+%endif
+
+%include "CommonMacros.inc"
+
+StartOfResetVectorCode:
+
+%define TOP_OF_BFV FixedPcdGet32 (PcdBfvBase)
+%define ADDR_OF_START_OF_RESET_CODE ADDR_OF(StartOfResetVectorCode)
+
+
+%include "PostCodes.inc"
+%include "X64/PageTables.asm"
+%include "X64/TestHob.asm"
+
+%ifdef DEBUG_PORT80
+  %include "Port80Debug.asm"
+%elifdef DEBUG_SERIAL
+  %include "SerialDebug.asm"
+%else
+  %include "DebugDisabled.asm"
+%endif
+
+%include "Ia32/ValidateBfvBase.asm"
+%include "Ia32/SearchForSecEntry.asm"
+
+#include <AutoGen.h>
+
+%if (FixedPcdGet32 (PcdUseTdxEmulation) != 0)
+%define SEAM_EMULATION
+%endif
+
+%include "Ia32/Flat32ToFlat64.asm"
+%include "Ia32/ReloadFlat32.asm"
+%include "Main.asm"
+%include "Ia32/ResetVectorVtf0.asm"
+

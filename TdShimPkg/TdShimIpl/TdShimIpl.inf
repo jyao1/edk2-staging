@@ -1,0 +1,84 @@
+## @file
+#  SEC Driver
+#
+#  Copyright (c) 2008 - 2018, Intel Corporation. All rights reserved.<BR>
+#
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = TdShimIpl
+  FILE_GUID                      = 17ED4C9E-05E0-48A6-A01D-FB0FA91E6398
+  MODULE_TYPE                    = SEC
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = SecMain
+
+#
+# The following information is for reference only and not required by the build tools.
+#
+#  VALID_ARCHITECTURES           = X64
+
+[Sources]
+  TdShimIpl.h
+  MetaData.c
+  Hob.c
+  Mp.c
+  TdShimIpl.c
+  TdShimLoad.c
+  Tcg.c
+
+[Sources.X64]
+  X64/ApRunLoop.nasm
+  X64/SecEntry.nasm
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  TdShimPkg/TdShimPkg.dec
+  UefiCpuPkg/UefiCpuPkg.dec
+  CryptoPkg/CryptoPkg.dec
+  SecurityPkg/SecurityPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  DebugLib
+  DebugAgentLib
+  BaseMemoryLib
+  PeCoffLib
+  PeCoffGetEntryPointLib
+  PeCoffExtraActionLib
+  LocalApicLib
+  HobLib
+  TdxLib
+  CpuExceptionHandlerLib
+  SynchronizationLib
+  VirtualMemoryLib
+  MemoryAllocationLib
+  PrePiLib
+
+[Guids]
+  gEfiHobMemoryAllocModuleGuid
+  gEfiHobMemoryAllocStackGuid
+  gTcgEvent2EntryHobGuid
+
+[Pcd]
+  gUefiTdShimPkgTokenSpaceGuid.PcdTempRamBase
+  gUefiTdShimPkgTokenSpaceGuid.PcdTempRamSize
+  gUefiTdShimPkgTokenSpaceGuid.PcdTempStackBase
+  gUefiTdShimPkgTokenSpaceGuid.PcdTempStackSize
+  gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxBase
+  gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxSize
+  gEfiMdeModulePkgTokenSpaceGuid.PcdInitValueInTempStack
+  gUefiTdShimPkgTokenSpaceGuid.PcdTdHobBase
+  gUefiTdShimPkgTokenSpaceGuid.PcdTdHobSize
+  gUefiTdShimPkgTokenSpaceGuid.PcdBfvBase
+  gUefiTdShimPkgTokenSpaceGuid.PcdBfvSize
+  gUefiTdShimPkgTokenSpaceGuid.PcdUseTdxEmulation
+  gUefiTdShimPkgTokenSpaceGuid.PcdTdxAcceptPageChunkSize
+  gEfiMdeModulePkgTokenSpaceGuid.PcdSetNxForStack               ## CONSUMES
+
+  gEfiMdeModulePkgTokenSpaceGuid.PcdDxeIplBuildPageTables       ## CONSUMES
+  gEfiMdeModulePkgTokenSpaceGuid.PcdCpuStackGuard                       ## CONSUMES
+

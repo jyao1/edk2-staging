@@ -1,0 +1,104 @@
+## @file
+#  TDVF: FDF
+#
+#  Copyright (c) 2006 - 2019, Intel Corporation. All rights reserved.<BR>
+#  (C) Copyright 2016 Hewlett Packard Enterprise Development LP<BR>
+#
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+##
+
+################################################################################
+
+[Defines]
+!include TdShimPkgDefines.fdf.inc
+
+#
+# Build the variable store and the firmware code as one unified flash device
+# image.
+#
+[FD.TDSHIM]
+BaseAddress   = $(FW_BASE_ADDRESS)
+Size          = $(FW_SIZE)
+ErasePolarity = 0
+BlockSize     = $(BLOCK_SIZE)
+NumBlocks     = $(FW_BLOCKS)
+
+$(TDHOB_OFFSET)|$(TDHOB_SIZE)
+gUefiTdShimPkgTokenSpaceGuid.PcdTdHobBase|gUefiTdShimPkgTokenSpaceGuid.PcdTdHobSize
+
+$(TEMPSTACK_OFFSET)|$(TEMPSTACK_SIZE)
+gUefiTdShimPkgTokenSpaceGuid.PcdTempStackBase|gUefiTdShimPkgTokenSpaceGuid.PcdTempStackSize
+
+$(TEMPHEAP_OFFSET)|$(TEMPHEAP_SIZE)
+gUefiTdShimPkgTokenSpaceGuid.PcdTempRamBase|gUefiTdShimPkgTokenSpaceGuid.PcdTempRamSize
+
+$(TDMAILBOX_OFFSET)|$(TDMAILBOX_SIZE)
+gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxBase|gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxSize
+DATA = {
+  0x00,0x00,0x00,0x00,
+  0xff,0xff,0xff,0xff,
+  0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00
+}
+
+$(MAINFV_OFFSET)|$(MAINFV_SIZE)
+FV = MAIN
+
+################################################################################
+
+[FV.MAIN]
+BlockSize          = 0x1000
+FvAlignment        = 16
+ERASE_POLARITY     = 1
+MEMORY_MAPPED      = TRUE
+STICKY_WRITE       = TRUE
+LOCK_CAP           = TRUE
+LOCK_STATUS        = TRUE
+WRITE_DISABLED_CAP = TRUE
+WRITE_ENABLED_CAP  = TRUE
+WRITE_STATUS       = TRUE
+WRITE_LOCK_CAP     = TRUE
+WRITE_LOCK_STATUS  = TRUE
+READ_DISABLED_CAP  = TRUE
+READ_ENABLED_CAP   = TRUE
+READ_STATUS        = TRUE
+READ_LOCK_CAP      = TRUE
+READ_LOCK_STATUS   = TRUE
+
+#
+# SEC Phase modules
+#
+# The code in this FV handles the initial firmware startup, and
+# decompresses the PEI and DXE FVs which handles the rest of the boot sequence.
+#
+INF  TdShimPkg/TdShimIpl/TdShimIpl.inf
+
+INF  TdShimPkg/Payload/Payload.inf
+
+INF  RuleOverride=RESET_VECTOR TdShimPkg/ResetVector/ResetVector.inf
+
+################################################################################
+
+[Rule.Common.SEC]
+  FILE SEC = $(NAMED_GUID) {
+    PE32     PE32           $(INF_OUTPUT)/$(MODULE_NAME).efi
+    UI       STRING ="$(MODULE_NAME)" Optional
+    VERSION  STRING ="$(INF_VERSION)" Optional BUILD_NUM=$(BUILD_NUMBER)
+  }
+
+[Rule.Common.DXE_CORE]
+  FILE DXE_CORE = $(NAMED_GUID) {
+    PE32     PE32   $(INF_OUTPUT)/$(MODULE_NAME).efi
+    UI       STRING="$(MODULE_NAME)" Optional
+    VERSION  STRING="$(INF_VERSION)" Optional BUILD_NUM=$(BUILD_NUMBER)
+  }
+
+[Rule.Common.SEC.RESET_VECTOR]
+  FILE RAW = $(NAMED_GUID) {
+    RAW BIN   Align = 16   |.bin
+  }
