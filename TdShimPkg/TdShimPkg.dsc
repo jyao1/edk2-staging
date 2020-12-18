@@ -134,7 +134,7 @@ DEFINE CRYPT_LIB = MBEDTLS
 
   IntrinsicLib|CryptoPkg/Library/IntrinsicLib/IntrinsicLib.inf
   OpensslLib|CryptoPkg/Library/OpensslLib/OpensslLibCrypto.inf
-  MbedTlsLib|CryptoMbedTlsPkg/Library/MbedTlsLib/MbedTlsLib.inf
+  #MbedTlsLib|CryptoMbedTlsPkg/Library/MbedTlsLib/MbedTlsLib.inf
   RngLib|MdePkg/Library/BaseRngLib/BaseRngLib.inf
 
   SmbusLib|MdePkg/Library/BaseSmbusLibNull/BaseSmbusLibNull.inf
@@ -149,9 +149,9 @@ DEFINE CRYPT_LIB = MBEDTLS
   MemoryEncryptionLib|TdShimPkg/Library/MemoryEncryptionLib/MemoryEncryption.inf
 
 !if $(CRYPT_LIB) == MBEDTLS
-  BaseCryptLib|CryptoMbedTlsPkg/Library/BaseCryptLib/CommonCryptLib.inf
+  #BaseCryptLib|CryptoMbedTlsPkg/Library/BaseCryptLib/CommonCryptLib.inf
 !else
-  BaseCryptLib|CryptoPkg/Library/BaseCryptLib/CommonCryptLib.inf
+  #BaseCryptLib|CryptoPkg/Library/BaseCryptLib/CommonCryptLib.inf
 !endif
 
   TdxLib|TdShimPkg/Library/TdxLib/TdxLibSec.inf
