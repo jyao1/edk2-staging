@@ -13,20 +13,24 @@
 #include <Library/PeimEntryPoint.h>
 #include <Library/DebugLib.h>
 #include <Library/BaseMemoryLib.h>
+#include <Library/PeiServicesLib.h>
 #include <Library/PcdLib.h>
 #include <Library/UefiCpuLib.h>
 #include <Library/DebugAgentLib.h>
+#include <Library/IoLib.h>
 #include <Library/PeCoffLib.h>
 #include <Library/LocalApicLib.h>
 #include <Library/PrePiLib.h>
-#include <Library/TdxLib.h>
 #include <IndustryStandard/Tdx.h>
+#include <Library/TdxLib.h>
 #include <Library/CpuExceptionHandlerLib.h>
 #include <Library/PrePiHobListPointerLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Library/SynchronizationLib.h>
+#include <Library/TdvfPlatformLib.h>
 
-#define GET_GPAW_FROM_INFO(INFO)  ((UINT8) ((INFO) & 0x3f))
+#define GET_GPAW_INIT_STATE(INFO)  ((UINT8) ((INFO) & 0x3f))
+
 
 volatile VOID *mMailBox = NULL;
 
@@ -34,6 +38,29 @@ volatile VOID *mMailBox = NULL;
 VOID    *mTdInitVp = NULL;
 UINTN   mInfo = 0;
 UINT32  mNumOfCpus = 0;
+
+
+#define SEC_IDT_ENTRY_COUNT  34
+
+typedef struct _SEC_IDT_TABLE {
+  EFI_PEI_SERVICES          *PeiService;
+  IA32_IDT_GATE_DESCRIPTOR  IdtTable[SEC_IDT_ENTRY_COUNT];
+} SEC_IDT_TABLE;
+
+
+
+//
+// Template of an IDT entry pointing to 10:FFFFFFE4h.
+//
+IA32_IDT_GATE_DESCRIPTOR  mIdtEntryTemplate = {
+  {                                      // Bits
+    0xffe4,                              // OffsetLow
+    0x10,                                // Selector
+    0x0,                                 // Reserved_0
+    IA32_IDT_GATE_TYPE_INTERRUPT_32,     // GateType
+    0xffff                               // OffsetHigh
+  }
+};
 
 volatile VOID *
 EFIAPI
@@ -109,10 +136,41 @@ SecCoreStartupWithStack (
   IN UINTN                            Info
   )
 {
+  SEC_IDT_TABLE               IdtTableInStack;
   EFI_SEC_PEI_HAND_OFF        SecCoreData;
   UINT32                      StackSize = EFI_PAGE_SIZE;
   EFI_STATUS                  Status;
   TD_RETURN_DATA              TdReturnData;
+  IA32_DESCRIPTOR             IdtDescriptor;
+  UINT32                      Index;
+
+
+  //
+  // Initialize IDT
+  //
+  IdtTableInStack.PeiService = NULL;
+  for (Index = 0; Index < SEC_IDT_ENTRY_COUNT; Index ++) {
+    CopyMem (&IdtTableInStack.IdtTable[Index], &mIdtEntryTemplate, sizeof (mIdtEntryTemplate));
+  }
+
+  IdtDescriptor.Base  = (UINTN)&IdtTableInStack.IdtTable;
+  IdtDescriptor.Limit = (UINT16)(sizeof (IdtTableInStack.IdtTable) - 1);
+
+  AsmWriteIdtr (&IdtDescriptor);
+  //
+  // Setup the default exception handlers
+  //
+  Status = InitializeCpuExceptionHandlers (NULL);
+  ASSERT_EFI_ERROR (Status);
+
+
+
+  //
+  // Some Constructors require hoblist initialized.
+  // Measure and Migrate HobList before anything gets added to it
+  //
+  ProcessLibraryConstructorList (NULL, NULL);
+
 
   DEBUG ((EFI_D_INFO,
     "SecCoreStartupWithStack(0x%x, 0x%x, 0x%x, 0x%x, 0x%x)\n",
@@ -130,11 +188,6 @@ SecCoreStartupWithStack (
 
   mNumOfCpus = TdReturnData.TdInfo.NumVcpus;
   mMailBox = (VOID *)PcdGet64(PcdTdMailboxBase);
-
-  //
-  // Must do this early incase #VE is enabled and MSR
-  // accesses trigger exceptions
-  InitializeCpuExceptionHandlers(NULL);
 
   //
   // Initialize floating point operating environment
@@ -156,6 +209,12 @@ SecCoreStartupWithStack (
   SecCoreData.StackSize              = StackSize >> 1;
   SecCoreData.BootFirmwareVolumeBase = BootFv;
   SecCoreData.BootFirmwareVolumeSize = (UINTN) BootFv->FvLength;
+
+  //
+  // Make sure the 8259 is masked before initializing the Debug Agent and the debug timer is enabled
+  //
+  IoWrite8 (0x21, 0xff);
+  IoWrite8 (0xA1, 0xff);
 
   //
   // Initialize Local APIC Timer hardware and disable Local APIC Timer
@@ -191,13 +250,14 @@ SecStartupPhase2(
   EFI_SEC_PEI_HAND_OFF        *SecCoreData;
   EFI_FIRMWARE_VOLUME_HEADER  *BootFv;
   EFI_STATUS                  Status;
+  EFI_HOB_PLATFORM_INFO       PlatformInfoHob;
   VOID                        *VmmHobList;
-  EFI_PHYSICAL_ADDRESS        Address;
+  VOID                        *Address;
   VOID                        *ApLoopFunc = NULL;
-  UINT32                      RelocationSize;
+  UINT32                      RelocationPages;
   MP_RELOCATION_MAP           RelocationMap;
   MP_WAKEUP_MAILBOX           *RelocatedMailBox;
-  tdvf_metadata_t             *MetaData;
+  EFI_TDX_METADATA            *MetaData;
 
   SecCoreData = (EFI_SEC_PEI_HAND_OFF *) Context;
 
@@ -205,26 +265,11 @@ SecStartupPhase2(
   // Make any runtime changes to metadata
   //
   MetaData = InitializeMetaData();
-  DEBUG((DEBUG_INFO, "MetaData(%p): bfv 0x%llx\n",
-    MetaData, MetaData->bfv_base_address));
+  DEBUG((DEBUG_INFO, "MetaData(%p): bfv 0x%llx vars 0x%llx\n",
+    MetaData, MetaData->Sections[0].MemoryAddress, MetaData->Sections[1].MemoryAddress));
 
-  if (FixedPcdGetBool(PcdUseTdxEmulation) == TRUE) {
-    if (mTdInitVp == NULL) {
-      PrePeiSetHobList(SecCoreData->TemporaryRamBase);
-      //
-      // Prepare Temporary Hoblist
-      //
-      HobConstructor (
-        (VOID *)SecCoreData->TemporaryRamBase,
-        SecCoreData->TemporaryRamSize,
-        (VOID *)SecCoreData->TemporaryRamBase,
-        (VOID *)(SecCoreData->StackBase)
-        );
-      VmmHobList = GetHobList();
-    }
-  } else {
-    VmmHobList = (VOID *)mTdInitVp;
-  }
+  ZeroMem (&PlatformInfoHob, sizeof(PlatformInfoHob));
+  VmmHobList = (VOID *)mTdInitVp;
   ASSERT(VmmHobList != NULL);
 
   //
@@ -236,19 +281,19 @@ SecStartupPhase2(
   //
   TransferHobList(VmmHobList);
   //
-  // Get information needed to setup aps running in their
-  // run loop in allocated acpi reserved memory
+  // Initialize Platform
   //
-  AsmGetRelocationMap (&RelocationMap);
-  RelocationSize  = EFI_PAGES_TO_SIZE (EFI_SIZE_TO_PAGES (
-                        (UINT32)RelocationMap.RelocateApLoopFuncSize
-                        ));
+  TdvfPlatformInitialize(&PlatformInfoHob);
 
   //
+  // Get information needed to setup aps running in their
+  // run loop in allocated acpi reserved memory
   // Add another page for mailbox
   //
-  RelocationSize += EFI_PAGE_SIZE;
-  Address = AllocateRelocationMemory(RelocationSize);
+  AsmGetRelocationMap (&RelocationMap);
+  RelocationPages  = EFI_SIZE_TO_PAGES ((UINT32)RelocationMap.RelocateApLoopFuncSize) + 1;
+
+  Address = AllocatePagesWithMemoryType(RelocationPages, EfiACPIMemoryNVS); 
   ApLoopFunc = (VOID *) ((UINTN) Address + EFI_PAGE_SIZE);
 
   CopyMem (
@@ -257,7 +302,7 @@ SecStartupPhase2(
     RelocationMap.RelocateApLoopFuncSize
     );
 
-  DEBUG((DEBUG_INFO, "Ap Relocation: mailbox 0x%x, loop %p\n",
+  DEBUG((DEBUG_INFO, "Ap Relocation: mailbox %p, loop %p\n",
     Address, ApLoopFunc));
 
   //
@@ -267,6 +312,8 @@ SecStartupPhase2(
   RelocatedMailBox->Command = MpProtectedModeWakeupCommandNoop;
   RelocatedMailBox->ApicId = MP_CPU_PROTECTED_MODE_MAILBOX_APICID_INVALID;
   RelocatedMailBox->WakeUpVector = 0;
+  
+  PlatformInfoHob.RelocatedMailBox = (UINT64)RelocatedMailBox;
 
   //
   // Create and event log entry so VMM Hoblist can be measured
@@ -288,16 +335,10 @@ SecStartupPhase2(
     0);
 
   //
-  // Some Constructors require hoblist initialized.
-  // Measure and Migrate HobList before anything gets added to it
-  //
-  ProcessLibraryConstructorList (NULL, NULL);
-
-  //
   // TDVF must not use any CpuHob from input HobList.
   // It must create its own using GPWA from VMM and 0 for SizeOfIoSpace
   //
-  BuildCpuHob(GET_GPAW_FROM_INFO(mInfo), 16);
+  BuildCpuHob(GET_GPAW_INIT_STATE(mInfo), 16);
 
   BootFv = (EFI_FIRMWARE_VOLUME_HEADER *)SecCoreData->BootFirmwareVolumeBase;
   BuildFvHob ((UINTN)BootFv, BootFv->FvLength);
@@ -305,7 +346,9 @@ SecStartupPhase2(
   // According to SAS Table 8-1, BFV is measured by VMM
   //TdxMeasureFvImage((UINTN)BootFv, BootFv->FvLength, 0);
 
-  //MeasureConfigurationVolume (MetaData->vars_base_address);
+  MeasureConfigurationVolume (MetaData->Sections[1].MemoryAddress);
+
+  BuildGuidDataHob(&gUefiTdShimPkgPlatformGuid, &PlatformInfoHob, sizeof(EFI_HOB_PLATFORM_INFO));
 
   BuildStackHob ((UINTN)SecCoreData->StackBase, SecCoreData->StackSize <<=1 );
 
@@ -320,6 +363,12 @@ SecStartupPhase2(
     EFI_RESOURCE_ATTRIBUTE_TESTED,
     (UINT64)SecCoreData->TemporaryRamBase,
     (UINT64)SecCoreData->TemporaryRamSize);
+
+  BuildMemoryAllocationHob (
+    FixedPcdGet32(PcdTdMailboxBase),
+    EFI_PAGE_SIZE,
+    EfiACPIMemoryNVS
+    );
 
   //
   // Load the DXE Core and transfer control to it

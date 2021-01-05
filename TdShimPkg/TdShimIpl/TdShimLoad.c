@@ -14,16 +14,29 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #include <Library/MemoryAllocationLib.h>
 #include <Library/PcdLib.h>
 
+#include <Guid/MemoryTypeInformation.h>
 #include <Guid/MemoryAllocationHob.h>
 
 #include <Register/Intel/Cpuid.h>
 #include <Library/PrePiLib.h>
-#include <Library/VirtualMemory.h>
+#include "X64/PageTables.h"
 #include <Library/ReportStatusCodeLib.h>
 
 #include "TdShimIpl.h"
 
 #define STACK_SIZE  0x20000
+
+EFI_MEMORY_TYPE_INFORMATION mDefaultMemoryTypeInformation[] = {
+  { EfiACPIMemoryNVS,       0x004 },
+  { EfiACPIReclaimMemory,   0x008 },
+  { EfiReservedMemoryType,  0x004 },
+  { EfiRuntimeServicesData, 0x024 },
+  { EfiRuntimeServicesCode, 0x030 },
+  { EfiBootServicesCode,    0x180 },
+  { EfiBootServicesData,    0xF00 },
+  { EfiMaxMemoryType,       0x000 }
+};
+
 
 /**
    Transfers control to DxeCore.
@@ -120,18 +133,27 @@ FindDxeCore (
   ASSERT(FileHandle != NULL);
   *FileHandle = NULL;
 
-  Status = FfsFindNextVolume (FvInstance, &VolumeHandle);
-  if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "FfsFindNextVolume - %r\n", Status));
-    CpuDeadLoop();
+  if (FvInstance != -1) {
+    //
+    // Caller passed in a specific FV to try, so only try that one
+    //
+
+    Status = FfsFindNextVolume (FvInstance, &VolumeHandle);
+    if (!EFI_ERROR (Status)) {
+      Status = FfsFindNextFile (EFI_FV_FILETYPE_FIRMWARE_VOLUME_IMAGE, VolumeHandle, FileHandle);
+      if (*FileHandle) {
+        // Assume the FV that contains the SEC (our code) also contains a compressed FV.
+        Status = FfsProcessFvFile (*FileHandle);
+        ASSERT_EFI_ERROR (Status);
+        Status = FfsAnyFvFindFirstFile (EFI_FV_FILETYPE_DXE_CORE, &VolumeHandle, FileHandle);
+      }
+    }
+  } else { 
+    // Assume the FV that contains the SEC (our code) also contains a compressed FV.
+    Status = DecompressFirstFv ();
+    ASSERT_EFI_ERROR (Status);
+    Status = FfsAnyFvFindFirstFile (EFI_FV_FILETYPE_DXE_CORE, &VolumeHandle, FileHandle);
   }
-  DEBUG ((DEBUG_INFO, "VolumeHandle - %x\n", VolumeHandle));
-  Status = FfsFindNextFile (EFI_FV_FILETYPE_DXE_CORE, VolumeHandle, FileHandle);
-  if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "FfsFindNextFile - %r\n", Status));
-    CpuDeadLoop();
-  }
-  DEBUG ((DEBUG_INFO, "FileHandle - %x\n", *FileHandle));
   
   return Status;
 }
@@ -158,6 +180,16 @@ DxeLoadCore (
   EFI_PEI_FILE_HANDLE                       FileHandle;
   VOID                                      *PeCoffImage;
 
+
+  //
+  // Create Memory Type Information HOB
+  //
+  BuildGuidDataHob (
+    &gEfiMemoryTypeInformationGuid,
+    mDefaultMemoryTypeInformation,
+    sizeof(mDefaultMemoryTypeInformation)
+    );
+
   //
   // Look in all the FVs present and find the DXE Core FileHandle
   //
@@ -181,7 +213,17 @@ DxeLoadCore (
   Status = FfsGetFileInfo (FileHandle, &DxeCoreFileInfo);
   ASSERT_EFI_ERROR (Status);
 
-  DEBUG ((DEBUG_INFO | DEBUG_LOAD, "Loading TPA CORE at 0x%11p EntryPoint=0x%11p\n", 
+  //
+  // Add HOB for the DXE Core
+  //
+  BuildModuleHob (
+    &DxeCoreFileInfo.FileName,
+    DxeCoreAddress,
+    ALIGN_VALUE (DxeCoreSize, EFI_PAGE_SIZE),
+    DxeCoreEntryPoint
+    );
+
+  DEBUG ((DEBUG_INFO | DEBUG_LOAD, "Loading DXE CORE at 0x%11p EntryPoint=0x%11p\n", 
     (VOID *)(UINTN)DxeCoreAddress, FUNCTION_ENTRY_POINT (DxeCoreEntryPoint)));
 
   //

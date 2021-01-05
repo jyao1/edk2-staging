@@ -1,0 +1,41 @@
+## @file
+#
+# TDVF Platform Lib for generic VMM
+#
+#  Copyright (C) 2013, Red Hat, Inc.
+#  Copyright (c) 2008 - 2012, Intel Corporation. All rights reserved.<BR>
+#  Copyright (c) 2017, AMD Incorporated. All rights reserved.<BR>
+#
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = TdvfPlatformLibDummySec
+  FILE_GUID                      = 7672fd8e-4dbe-4cdb-9bbc-f61464ae801d
+  MODULE_TYPE                    = BASE
+  VERSION_STRING                 = 1.0
+  LIBRARY_CLASS                  = TdvfPlatformLib|SEC
+
+#
+# The following information is for reference only and not required by the build tools.
+#
+#  VALID_ARCHITECTURES           = X64
+#
+
+[Sources]
+  Platform.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  TdvfPkg/TdvfPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  DebugLib
+  IoLib
+  MemoryAllocationLib
+  HobLib
+

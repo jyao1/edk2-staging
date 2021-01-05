@@ -34,7 +34,7 @@ extern ASM_PFX(SecCoreStartupWithStack)
 ;
 
 %macro tdcall 0
-%if (FixedPcdGet32 (PcdUseTdxEmulation) == 0)
+%if (FixedPcdGet32 (PcdUseTdxEmulation) != 0)
     vmcall
 %else
     db 0x66,0x0f,0x01,0xcc

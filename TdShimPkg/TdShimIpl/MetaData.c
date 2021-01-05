@@ -10,26 +10,75 @@
 
 #include "TdShimIpl.h"
 
-tdvf_metadata_t  mTdShimMetadata = {
-   .guid                = EFI_METADATA_GUID,
-   .mailbox_base_address = (UINTN)FixedPcdGet64(PcdTdMailboxBase),
-   .mailbox_size        = (UINTN)FixedPcdGet64(PcdTdMailboxSize),
-   .hob_base_address    = (UINTN)FixedPcdGet64(PcdTdHobBase),
-   .hob_size            = (UINTN)FixedPcdGet64(PcdTdHobSize),
-   .stack_base_address  = (UINTN)FixedPcdGet64(PcdTempStackBase),
-   .stack_size          = (UINTN)FixedPcdGet64(PcdTempStackSize),
-   .heap_base_address   = (UINTN)FixedPcdGet64(PcdTempRamBase),
-   .heap_size           = (UINTN)FixedPcdGet64(PcdTempRamSize),
-   .bfv_base_address    = (UINTN)FixedPcdGet32(PcdBfvBase),
-   .bfv_size            = (UINT32)FixedPcdGet32(PcdBfvSize),
-   .rsvd                = 0,
-   .sig                 = SIGNATURE_32('T','D','V','F')
- };
+EFI_TDX_METADATA  mTdShimMetadata = {
+  .Guid = EFI_TDX_METADATA_GUID,
+  // Descriptor
+  {
+    .Signature            = SIGNATURE_32('T','D','V','F'),
+    .Length               = sizeof(mTdShimMetadata) - 20,
+    .Version              = 1,
+    .NumberOfSectionEntry = 6
+  },
+  {{  // BFV
+    .DataOffset     = FixedPcdGet32(PcdBfvRawDataOffset),
+    .RawDataSize    = FixedPcdGet32(PcdBfvSize),
+    .MemoryAddress  = (UINTN)FixedPcdGet32(PcdBfvBase),
+    .MemoryDataSize = (UINTN)FixedPcdGet32(PcdBfvSize),
+    .Type           = EFI_TDX_METADATA_SECTION_TYPE_BFV,
+    .Attributes     = EFI_TDX_METADATA_ATTRIBUTES_EXTENDMR
+  },
+  // CFV
+  {
+    .DataOffset     = FixedPcdGet32(PcdVarsRawDataOffset),
+    .RawDataSize    = (UINT32)FixedPcdGet64(PcdVarsSize),
+    .MemoryAddress  = (UINTN)FixedPcdGet64(PcdVarsBase),
+    .MemoryDataSize = (UINTN)FixedPcdGet64(PcdVarsSize),
+    .Type           = EFI_TDX_METADATA_SECTION_TYPE_CFV,
+    .Attributes     = 0
+  },
+  // Stack
+  {
+    .DataOffset     = 0,
+    .RawDataSize    = 0,
+    .MemoryAddress  = (UINTN)FixedPcdGet64(PcdTempStackBase),
+    .MemoryDataSize = (UINTN)FixedPcdGet64(PcdTempStackSize),
+    .Type           = EFI_TDX_METADATA_SECTION_TYPE_TEMP_MEM,
+    .Attributes     = 0
+  },
+  // Heap
+  {
+    .DataOffset     = 0,
+    .RawDataSize    = 0,
+    .MemoryAddress  = (UINTN)FixedPcdGet64(PcdTempRamBase),
+    .MemoryDataSize = (UINTN)FixedPcdGet64(PcdTempRamSize),
+    .Type           = EFI_TDX_METADATA_SECTION_TYPE_TEMP_MEM,
+    .Attributes     = 0
+  },
+  // TD_HOB
+  {
+    .DataOffset     = 0,
+    .RawDataSize    = 0,
+    .MemoryAddress  = (UINTN)FixedPcdGet64(PcdTdHobBase),
+    .MemoryDataSize = (UINTN)FixedPcdGet64(PcdTdHobSize),
+    .Type           = EFI_TDX_METADATA_SECTION_TYPE_TD_HOB,
+    .Attributes     = 0
+  },
+  // MAILBOX
+  {
+    .DataOffset     = 0,
+    .RawDataSize    = 0,
+    .MemoryAddress  = (UINTN)FixedPcdGet64(PcdTdMailboxBase),
+    .MemoryDataSize = (UINTN)FixedPcdGet64(PcdTdMailboxSize),
+    .Type           = EFI_TDX_METADATA_SECTION_TYPE_TEMP_MEM,
+    .Attributes     = 0
+  }},
+  0
+};
 
 /**
   Make any runtime modifications to the metadata structure
 **/
-tdvf_metadata_t *
+EFI_TDX_METADATA *
 EFIAPI
 InitializeMetaData(
   VOID  
@@ -38,8 +87,8 @@ InitializeMetaData(
   // 
   // mTdShimMetadata stores the fixed information
   // Referenced here to make sure it is not optimized
-  if(mTdShimMetadata.rsvd == 0)
-    mTdShimMetadata.rsvd = 1;
+  if(mTdShimMetadata.Rsvd == 0)
+    mTdShimMetadata.Rsvd = 1;
 
   return &mTdShimMetadata;
 }

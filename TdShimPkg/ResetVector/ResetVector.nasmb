@@ -30,10 +30,8 @@ StartOfResetVectorCode:
 %define TOP_OF_BFV FixedPcdGet32 (PcdBfvBase)
 %define ADDR_OF_START_OF_RESET_CODE ADDR_OF(StartOfResetVectorCode)
 
-
 %include "PostCodes.inc"
 %include "X64/PageTables.asm"
-%include "X64/TestHob.asm"
 
 %ifdef DEBUG_PORT80
   %include "Port80Debug.asm"
@@ -47,10 +45,6 @@ StartOfResetVectorCode:
 %include "Ia32/SearchForSecEntry.asm"
 
 #include <AutoGen.h>
-
-%if (FixedPcdGet32 (PcdUseTdxEmulation) != 0)
-%define SEAM_EMULATION
-%endif
 
 %include "Ia32/Flat32ToFlat64.asm"
 %include "Ia32/ReloadFlat32.asm"

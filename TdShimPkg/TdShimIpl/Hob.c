@@ -15,10 +15,9 @@
 #include <Library/BaseMemoryLib.h>
 #include <Library/PrePiLib.h>
 #include <Library/PrePiHobListPointerLib.h>
-#include <Library/TdxLib.h>
 
 #include "TdShimIpl.h"
-
+#include <Library/TdvfPlatformLib.h>
 #include <TcgTdx.h>
 #include <IndustryStandard/UefiTcgPlatform.h>
 
@@ -101,7 +100,7 @@ ProcessHobList (
 
         DEBUG((DEBUG_INFO, "ResourceAttribute: 0x%x\n", Hob.ResourceDescriptor->ResourceAttribute));
         DEBUG((DEBUG_INFO, "PhysicalStart: 0x%llx\n", Hob.ResourceDescriptor->PhysicalStart));
-        DEBUG((DEBUG_INFO, "ResourceLength: 0x%x\n", Hob.ResourceDescriptor->ResourceLength));
+        DEBUG((DEBUG_INFO, "ResourceLength: 0x%llx\n", Hob.ResourceDescriptor->ResourceLength));
         DEBUG((DEBUG_INFO, "Owner: %g\n\n", &Hob.ResourceDescriptor->Owner));
 
         PhysicalEnd = Hob.ResourceDescriptor->PhysicalStart + Hob.ResourceDescriptor->ResourceLength;
@@ -173,6 +172,10 @@ TransferHobList (
       // 
       // We mark each resource that we issue AcceptPage to with EFI_RESOURCE_SYSTEM_MEMORY
       //
+      if ((Hob.ResourceDescriptor->ResourceType == EFI_RESOURCE_SYSTEM_MEMORY) &&
+        (PhysicalEnd <= BASE_4GB)) {
+        ResourceAttribute |= EFI_RESOURCE_ATTRIBUTE_ENCRYPTED;
+      }
       BuildResourceDescriptorHob(
         Hob.ResourceDescriptor->ResourceType,
         ResourceAttribute,
@@ -242,52 +245,3 @@ LogHobList (
   
   ASSERT_EFI_ERROR (Status);
 }
-
-/**
-  Need to reserved suitable memory for the APs to use
-  for their mailbox and spinloop in ACPI reserved memory.
-
-  Use the information found earlier that points to the highest
-  memory region given to the TD. This routine will reserved the 
-  top X number of pages for this use.
-
-  @param[in] Size    The amount of memory needed for relocation
-  @param[out]        The physical address to use for relocation
-
-**/
-EFI_PHYSICAL_ADDRESS
-EFIAPI
-AllocateRelocationMemory(
-  UINT32  Size
-  )
-{
-  EFI_PHYSICAL_ADDRESS Address;
-  EFI_PEI_HOB_POINTERS Hob;
-  EFI_PHYSICAL_ADDRESS Offset;
-
-  // We can't use AllocPages because it sets BuildMemoryAllocation as EfiBootServicesData
-  
-  Hob.Raw = GetHobList ();
-
-  // Check to see if on 4k boundary
-  Offset = Hob.HandoffInformationTable->EfiFreeMemoryTop & 0xFFF;
-  if (Offset != 0) {
-    // If not aligned, make the allocation aligned.
-    Hob.HandoffInformationTable->EfiFreeMemoryTop -= Offset;
-  }
-
-  Hob.HandoffInformationTable->EfiFreeMemoryTop -= Size;
-  Address = Hob.HandoffInformationTable->EfiFreeMemoryTop;
-
-  //
-  // Create a memory allocate HOB
-  //
-  BuildMemoryAllocationHob (
-    (UINTN)Address,
-    Size,
-    EfiACPIMemoryNVS
-    );
-
-  return Address;
-}
-

@@ -171,6 +171,14 @@ DEFINE CRYPT_LIB = MBEDTLS
 
   DxeCoreEntryPoint|MdePkg/Library/DxeCoreEntryPoint/DxeCoreEntryPoint.inf
 
+[LibraryClasses.common.SEC]
+!if $(QEMU_PLATFORM) == TRUE
+  QemuFwCfgLib|TdvfPkg/Library/QemuFwCfgLibTdx/QemuFwCfgSecLibTdx.inf
+  TdvfPlatformLib|TdvfPkg/Library/TdvfPlatformLibQemu/TdvfPlatformLibQemuSec.inf
+!else
+  TdvfPlatformLib|TdvfPkg/Library/TdvfPlatformLibDummy//TdvfPlatformLibDummySec.inf
+!endif
+
 ################################################################################
 #
 # Pcd Section - list of all EDK II PCD Entries defined by this Platform.

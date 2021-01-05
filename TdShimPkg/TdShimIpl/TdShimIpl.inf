@@ -32,6 +32,7 @@
 [Sources.X64]
   X64/ApRunLoop.nasm
   X64/SecEntry.nasm
+  X64/VirtualMemory.c
 
 [Packages]
   MdePkg/MdePkg.dec
@@ -49,19 +50,22 @@
   PeCoffLib
   PeCoffGetEntryPointLib
   PeCoffExtraActionLib
+  #PeiServicesLib
   LocalApicLib
-  HobLib
-  TdxLib
+  TdvfPlatformLib
   CpuExceptionHandlerLib
   SynchronizationLib
-  VirtualMemoryLib
-  MemoryAllocationLib
-  PrePiLib
+  TdxLib
 
 [Guids]
   gEfiHobMemoryAllocModuleGuid
   gEfiHobMemoryAllocStackGuid
+  gUefiTdShimPkgPlatformGuid
+  gEfiMemoryTypeInformationGuid
   gTcgEvent2EntryHobGuid
+
+[Ppis]
+  gEfiTemporaryRamSupportPpiGuid                # PPI ALWAYS_PRODUCED
 
 [Pcd]
   gUefiTdShimPkgTokenSpaceGuid.PcdTempRamBase
@@ -71,14 +75,28 @@
   gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxBase
   gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxSize
   gEfiMdeModulePkgTokenSpaceGuid.PcdInitValueInTempStack
+  gUefiTdShimPkgTokenSpaceGuid.PcdFdBaseAddress
+  gUefiTdShimPkgTokenSpaceGuid.PcdFdSize
   gUefiTdShimPkgTokenSpaceGuid.PcdTdHobBase
   gUefiTdShimPkgTokenSpaceGuid.PcdTdHobSize
+  gUefiTdShimPkgTokenSpaceGuid.PcdVarsBase
+  gUefiTdShimPkgTokenSpaceGuid.PcdVarsRawDataOffset
+  gUefiTdShimPkgTokenSpaceGuid.PcdVarsSize
   gUefiTdShimPkgTokenSpaceGuid.PcdBfvBase
+  gUefiTdShimPkgTokenSpaceGuid.PcdBfvRawDataOffset
   gUefiTdShimPkgTokenSpaceGuid.PcdBfvSize
   gUefiTdShimPkgTokenSpaceGuid.PcdUseTdxEmulation
   gUefiTdShimPkgTokenSpaceGuid.PcdTdxAcceptPageChunkSize
   gEfiMdeModulePkgTokenSpaceGuid.PcdSetNxForStack               ## CONSUMES
 
+
   gEfiMdeModulePkgTokenSpaceGuid.PcdDxeIplBuildPageTables       ## CONSUMES
   gEfiMdeModulePkgTokenSpaceGuid.PcdCpuStackGuard                       ## CONSUMES
 
+  gEfiMdeModulePkgTokenSpaceGuid.PcdUse1GPageTable              ## SOMETIMES_CONSUMES
+  gEfiMdeModulePkgTokenSpaceGuid.PcdNullPointerDetectionPropertyMask    ## CONSUMES
+  gEfiMdeModulePkgTokenSpaceGuid.PcdCpuStackGuard                       ## CONSUMES
+  gEfiMdeModulePkgTokenSpaceGuid.PcdDxeNxMemoryProtectionPolicy ## SOMETIMES_CONSUMES
+  gEfiMdeModulePkgTokenSpaceGuid.PcdImageProtectionPolicy       ## SOMETIMES_CONSUMES
+  gEfiMdeModulePkgTokenSpaceGuid.PcdSetNxForStack               ## CONSUMES
+  gEfiMdeModulePkgTokenSpaceGuid.PcdPteMemoryEncryptionAddressOrMask    ## CONSUMES

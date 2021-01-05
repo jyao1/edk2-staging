@@ -24,16 +24,9 @@ ErasePolarity = 0
 BlockSize     = $(BLOCK_SIZE)
 NumBlocks     = $(FW_BLOCKS)
 
-$(TDHOB_OFFSET)|$(TDHOB_SIZE)
-gUefiTdShimPkgTokenSpaceGuid.PcdTdHobBase|gUefiTdShimPkgTokenSpaceGuid.PcdTdHobSize
+!include VarStore.fdf.inc
 
-$(TEMPSTACK_OFFSET)|$(TEMPSTACK_SIZE)
-gUefiTdShimPkgTokenSpaceGuid.PcdTempStackBase|gUefiTdShimPkgTokenSpaceGuid.PcdTempStackSize
-
-$(TEMPHEAP_OFFSET)|$(TEMPHEAP_SIZE)
-gUefiTdShimPkgTokenSpaceGuid.PcdTempRamBase|gUefiTdShimPkgTokenSpaceGuid.PcdTempRamSize
-
-$(TDMAILBOX_OFFSET)|$(TDMAILBOX_SIZE)
+$(COMBINED_TDMAILBOX_OFFSET)|$(TDMAILBOX_SIZE)
 gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxBase|gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxSize
 DATA = {
   0x00,0x00,0x00,0x00,
@@ -46,10 +39,70 @@ DATA = {
   0x00,0x00,0x00,0x00
 }
 
+$(COMBINED_TDHOB_OFFSET)|$(TDHOB_SIZE)
+gUefiTdShimPkgTokenSpaceGuid.PcdTdHobBase|gUefiTdShimPkgTokenSpaceGuid.PcdTdHobSize
+
+$(COMBINED_TEMPSTACK_OFFSET)|$(TEMPSTACK_SIZE)
+gUefiTdShimPkgTokenSpaceGuid.PcdTempStackBase|gUefiTdShimPkgTokenSpaceGuid.PcdTempStackSize
+
+$(COMBINED_TEMPHEAP_OFFSET)|$(TEMPHEAP_SIZE)
+gUefiTdShimPkgTokenSpaceGuid.PcdTempRamBase|gUefiTdShimPkgTokenSpaceGuid.PcdTempRamSize
+
+$(COMBINED_MAINFV_OFFSET)|$(MAINFV_SIZE)
+FV = MAIN
+
+
+
+#
+# Build the variable store and the firmware code as separate flash device
+# images.
+#
+[FD.TDVF_VARS]
+BaseAddress   = $(FW_BASE_ADDRESS) 
+Size          = $(VARS_SIZE) 
+ErasePolarity = 1
+BlockSize     = $(BLOCK_SIZE)
+NumBlocks     = $(VARS_BLOCKS)
+    
+!include VarStore.fdf.inc
+
+    
+[FD.TDVF_MAIN]
+BaseAddress   = $(MAIN_BASE_ADDRESS)
+Size          = $(MAIN_SIZE)
+ErasePolarity = 1
+BlockSize     = $(BLOCK_SIZE)
+NumBlocks     = $(MAIN_BLOCKS)
+
+
+$(MAIN_TDMAILBOX_OFFSET)|$(TDMAILBOX_SIZE)
+gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxBase|gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxSize
+DATA = {
+  0x00,0x00,0x00,0x00,
+  0xff,0xff,0xff,0xff,
+  0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00
+}
+
+$(MAIN_TDHOB_OFFSET)|$(TDHOB_SIZE)
+gUefiTdShimPkgTokenSpaceGuid.PcdTdHobBase|gUefiTdShimPkgTokenSpaceGuid.PcdTdHobSize
+
+$(MAIN_TEMPSTACK_OFFSET)|$(TEMPSTACK_SIZE)
+gUefiTdShimPkgTokenSpaceGuid.PcdTempStackBase|gUefiTdShimPkgTokenSpaceGuid.PcdTempStackSize
+
+$(MAIN_TEMPHEAP_OFFSET)|$(TEMPHEAP_SIZE)
+gUefiTdShimPkgTokenSpaceGuid.PcdTempRamBase|gUefiTdShimPkgTokenSpaceGuid.PcdTempRamSize
+
 $(MAINFV_OFFSET)|$(MAINFV_SIZE)
 FV = MAIN
 
 ################################################################################
+
+!include TdvfQemuFvMain.fdf.inc
 
 [FV.MAIN]
 BlockSize          = 0x1000
@@ -78,9 +131,19 @@ READ_LOCK_STATUS   = TRUE
 #
 INF  TdShimPkg/TdShimIpl/TdShimIpl.inf
 
-INF  TdShimPkg/Payload/Payload.inf
 
 INF  RuleOverride=RESET_VECTOR TdShimPkg/ResetVector/ResetVector.inf
+
+  FILE FV_IMAGE = 9E21FD93-9C72-4c15-8C4B-E77F1DB2D792 {
+    SECTION COMPRESS {
+     #
+     # These firmware volumes will have files placed in them uncompressed,
+     # and then both firmware volumes will be compressed in a single
+     # compression operation in order to achieve better overall compression.
+     #
+     SECTION FV_IMAGE = DXEFV
+   }
+ }
 
 ################################################################################
 

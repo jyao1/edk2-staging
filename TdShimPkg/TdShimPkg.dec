@@ -22,6 +22,11 @@
 
 [Guids]
   gUefiTdShimPkgTokenSpaceGuid          = {0xf706dd8f, 0xeebe, 0x11e9, {0x99, 0x14, 0xe4, 0xa7, 0xa0, 0xda, 0xe6, 0x51}}
+  gUefiTdShimPkgPlatformGuid            = {0xdec9b486, 0x1f16, 0x47c7, {0x8f, 0x68, 0xdf, 0x1a, 0x41, 0x88, 0x8b, 0xa5}}
+
+[PcdsFixedAtBuild.common, PcdsPatchableInModule.common]
+  gUefiTdShimPkgTokenSpaceGuid.PcdFdBaseAddress|0x0|UINT32|0x07
+  gUefiTdShimPkgTokenSpaceGuid.PcdFdSize|0x0|UINT32|0x08
 
 [PcdsFixedAtBuild]
   gUefiTdShimPkgTokenSpaceGuid.PcdTempRamBase|0x0|UINT64|0x20000
@@ -46,3 +51,8 @@
   gUefiTdShimPkgTokenSpaceGuid.PcdUseTdxEmulation|0x0|UINT32|0x2001D
   gUefiTdShimPkgTokenSpaceGuid.PcdTdxAcceptPageChunkSize|0x2000|UINT64|0x2001E
   gUefiTdShimPkgTokenSpaceGuid.PcdIgnoreVeHalt|FALSE|BOOLEAN|0x2001F
+
+  gUefiTdShimPkgTokenSpaceGuid.PcdVarsBase|0x0|UINT64|0x20013
+  gUefiTdShimPkgTokenSpaceGuid.PcdVarsSize|0x0|UINT64|0x20014
+  gUefiTdShimPkgTokenSpaceGuid.PcdVarsRawDataOffset|0x0|UINT32|0x20020
+  gUefiTdShimPkgTokenSpaceGuid.PcdBfvRawDataOffset|0x0|UINT32|0x20021

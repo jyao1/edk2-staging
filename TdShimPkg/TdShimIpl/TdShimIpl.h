@@ -60,25 +60,46 @@ typedef struct {
 } MP_RELOCATION_MAP;
 
 #pragma pack()
+
+#define LOOPIT(X) do { \
+  volatile int foo = (X); \
+  while (foo) ; \
+} while(0)
+
 #pragma pack(push, 4)
-#define EFI_METADATA_GUID \
+#define EFI_TDX_METADATA_GUID \
    { 0xe9eaf9f3, 0x168e, 0x44d5, { 0xa8, 0xeb, 0x7f, 0x4d, 0x87, 0x38, 0xf6, 0xae } }
 
+#define EFI_TDX_METADATA_SECTION_TYPE_BFV       0
+#define EFI_TDX_METADATA_SECTION_TYPE_CFV       1
+#define EFI_TDX_METADATA_SECTION_TYPE_TD_HOB    2
+#define EFI_TDX_METADATA_SECTION_TYPE_TEMP_MEM  3
+
+#define EFI_TDX_METADATA_ATTRIBUTES_EXTENDMR    0x00000001
+
 typedef struct {
-  EFI_GUID guid;
-  UINT64  mailbox_base_address;
-  UINT64  mailbox_size;
-  UINT64  hob_base_address;
-  UINT64  hob_size;
-  UINT64  stack_base_address;
-  UINT64  stack_size;
-  UINT64  heap_base_address;
-  UINT64  heap_size;
-  UINT64  bfv_base_address;
-  UINT32  bfv_size;
-  UINT32  rsvd;
-  UINT32  sig;
-}tdvf_metadata_t;
+  UINT32  Signature;
+  UINT32  Length;
+  UINT32  Version;
+  UINT32  NumberOfSectionEntry;
+}EFI_TDX_METADATA_DESCRIPTOR;
+
+typedef struct {
+  UINT32  DataOffset;
+  UINT32  RawDataSize;
+  UINT64  MemoryAddress;
+  UINT64  MemoryDataSize;
+  UINT32  Type;
+  UINT32  Attributes;
+}EFI_TDX_METADATA_SECTION;
+
+typedef struct {
+  EFI_GUID                    Guid;
+  EFI_TDX_METADATA_DESCRIPTOR Descriptor;
+  EFI_TDX_METADATA_SECTION    Sections[6];
+  UINT32                      Rsvd;
+}EFI_TDX_METADATA;
+
 #pragma pack(pop)
 
 #pragma pack (1)
@@ -160,7 +181,7 @@ TransferHobList (
   IN CONST VOID             *HobStart
   );
 
-tdvf_metadata_t *
+EFI_TDX_METADATA *
 EFIAPI
 InitializeMetaData(
   VOID
@@ -177,12 +198,6 @@ TdxMeasureFvImage (
   IN EFI_PHYSICAL_ADDRESS           FvBase,
   IN UINT64                         FvLength,
   IN UINT8                          PcrIndex
-  );
-
-EFI_PHYSICAL_ADDRESS
-EFIAPI
-AllocateRelocationMemory(
-  UINT32  Size
   );
 
 VOID
