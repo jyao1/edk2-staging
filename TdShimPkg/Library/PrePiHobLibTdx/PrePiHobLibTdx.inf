@@ -1,0 +1,42 @@
+#/** @file
+#  Hob lib that does not contain the APIs as they are already in the PrePiLib
+#
+#  Copyright (c) 2018, Intel Corporation. All rights reserved.<BR>
+#  Copyright (c) 2008 - 2010, Apple Inc. All rights reserved.<BR>
+#
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+#
+#**/
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = PrePiHobLibTdx
+  FILE_GUID                      = 78BCE4D0-F80D-11EA-8B6E-0800200C9A66
+  MODULE_TYPE                    = BASE
+  VERSION_STRING                 = 1.0
+  LIBRARY_CLASS                  = HobLib
+
+
+#
+#  VALID_ARCHITECTURES           = IA32 X64 EBC
+#
+
+[Sources.common]
+  Hob.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  TdShimPkg/TdShimPkg.dec
+
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  DebugLib
+  PrePiHobListPointerLib
+
+[Guids]
+  gEfiHobMemoryAllocModuleGuid
+  gEfiHobMemoryAllocStackGuid

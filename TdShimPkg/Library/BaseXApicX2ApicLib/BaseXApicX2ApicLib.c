@@ -22,9 +22,8 @@
 #include <Library/IoLib.h>
 #include <Library/TimerLib.h>
 #include <Library/PcdLib.h>
-#include <Library/TdxLib.h>
-
 #include <IndustryStandard/Tdx.h>
+#include <Library/TdxLib.h>
 
 extern BOOLEAN
 EFIAPI
@@ -84,7 +83,10 @@ ReadMsrReg (
   UINT64 Val;
   UINT64 Status;
   if (!UseMSR (MsrIndex) && InitializeMsrAccess()) {
-    TDVMCALL_CHECK(EXIT_REASON_MSR_READ, (UINT64)MsrIndex, 0, 0, 0, &Val, Status, TRUE);
+    Status = TdVmCall(TDVMCALL_RDMSR, (UINT64)MsrIndex, 0, 0, 0, &Val);
+    if (Status != 0) {
+      TdVmCall(TDVMCALL_HALT, 0, 0, 0, 0, 0);
+    }
   } else {
     Val = AsmReadMsr64 (MsrIndex);
   }
@@ -100,7 +102,10 @@ WriteMsrReg (
 {
   UINT64 Status;
   if (!UseMSR (MsrIndex) && InitializeMsrAccess()) {
-    TDVMCALL_CHECK(EXIT_REASON_MSR_WRITE, (UINT64)MsrIndex, Val, 0, 0, NULL, Status, TRUE);
+    Status = TdVmCall(TDVMCALL_WRMSR, (UINT64)MsrIndex, Val, 0, 0, 0);
+    if (Status != 0) {
+      TdVmCall(TDVMCALL_HALT, 0, 0, 0, 0, 0);
+    }
   } else {
     AsmWriteMsr64(MsrIndex, Val);
   }

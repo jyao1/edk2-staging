@@ -15,8 +15,10 @@
 
 [Includes]
   Include
+  Override/UefiCpuPkg/Include
 
 [LibraryClasses]
+  VmTdExitLib|Override/UefiCpuPkg/Include/Library/VmTdExitLib.h
 
 [Guids]
   gUefiTdShimPkgTokenSpaceGuid          = {0xf706dd8f, 0xeebe, 0x11e9, {0x99, 0x14, 0xe4, 0xa7, 0xa0, 0xda, 0xe6, 0x51}}

@@ -116,9 +116,10 @@ DEFINE CRYPT_LIB = MBEDTLS
   CpuLib|MdePkg/Library/BaseCpuLib/BaseCpuLib.inf
   PeCoffLib|MdePkg/Library/BasePeCoffLib/BasePeCoffLib.inf
   CacheMaintenanceLib|MdePkg/Library/BaseCacheMaintenanceLib/BaseCacheMaintenanceLib.inf
+  UefiDecompressLib|MdePkg/Library/BaseUefiDecompressLib/BaseUefiDecompressLib.inf
   SortLib|MdeModulePkg/Library/UefiSortLib/UefiSortLib.inf
   PeCoffGetEntryPointLib|MdePkg/Library/BasePeCoffGetEntryPointLib/BasePeCoffGetEntryPointLib.inf
-  IoLib|TdShimPkg/Library/TdxIoLibIntrinsic/TdxIoLibIntrinsicDxe.inf
+  IoLib|TdShimPkg/Library/BaseIoLibIntrinsicTdx/BaseIoLibIntrinsicTdx.inf
   OemHookStatusCodeLib|MdeModulePkg/Library/OemHookStatusCodeLibNull/OemHookStatusCodeLibNull.inf
   SerialPortLib|PcAtChipsetPkg/Library/SerialIoLib/SerialIoLib.inf
   UefiLib|MdePkg/Library/UefiLib/UefiLib.inf
@@ -144,9 +145,10 @@ DEFINE CRYPT_LIB = MBEDTLS
   LocalApicLib|TdShimPkg/Library/BaseXApicX2ApicLib/BaseXApicX2ApicLibDxe.inf
   IoApicLib|PcAtChipsetPkg/Library/BaseIoApicLib/BaseIoApicLib.inf
   VmgExitLib|UefiCpuPkg/Library/VmgExitLibNull/VmgExitLibNull.inf
+  VmTdExitLib|TdShimPkg/Library/VmTdExitLib/VmTdExitLib.inf
 
   VirtualMemoryLib|TdShimPkg/Library/VirtualMemoryLib/VirtualMemoryLib.inf
-  MemoryEncryptionLib|TdShimPkg/Library/MemoryEncryptionLib/MemoryEncryption.inf
+  MemoryEncryptionLib|TdShimPkg/Library/BaseMemEncryptTdxLib/BaseMemEncryptTdxLib.inf
 
 !if $(CRYPT_LIB) == MBEDTLS
   #BaseCryptLib|CryptoMbedTlsPkg/Library/BaseCryptLib/CommonCryptLib.inf
@@ -156,8 +158,8 @@ DEFINE CRYPT_LIB = MBEDTLS
 
   TdxLib|TdShimPkg/Library/TdxLib/TdxLibSec.inf
   ReportStatusCodeLib|MdeModulePkg/Library/PeiReportStatusCodeLib/PeiReportStatusCodeLib.inf
-  CpuExceptionHandlerLib|TdShimPkg/Library/CpuExceptionHandlerLib/SecPeiTdxCpuExceptionHandlerLib.inf
-  IoLib|TdShimPkg/Library/TdxIoLibIntrinsic/TdxIoLibIntrinsicSec.inf
+  CpuExceptionHandlerLib|TdShimPkg/Override/UefiCpuPkg/Library/CpuExceptionHandlerLib/SecPeiCpuExceptionHandlerLib.inf
+  IoLib|TdShimPkg/Library/BaseIoLibIntrinsicTdx/BaseIoLibIntrinsicTdx.inf
   PerformanceLib|MdePkg/Library/BasePerformanceLibNull/BasePerformanceLibNull.inf
   LocalApicLib|TdShimPkg/Library/BaseXApicX2ApicLib/BaseXApicX2ApicLibSec.inf
 
@@ -252,10 +254,10 @@ DEFINE CRYPT_LIB = MBEDTLS
   #
   TdShimPkg/TdShimIpl/TdShimIpl.inf {
     <LibraryClasses>
-      PrePiLib|TdShimPkg/Library/PrePiLib/PrePiLib.inf
-      HobLib|TdShimPkg/Library/PrePiHobLib/PrePiHobLib.inf
-      PrePiHobListPointerLib|TdShimPkg/Library/PrePiHobListPointerLib/PrePiHobListPointerLib.inf
-      MemoryAllocationLib|TdShimPkg/Library/PrePiMemoryAllocationLib/PrePiMemoryAllocationLib.inf
+      PrePiLib|TdShimPkg/Library/PrePiLibTdx/PrePiLibTdx.inf
+      HobLib|TdShimPkg/Library/PrePiHobLibTdx/PrePiHobLibTdx.inf
+      PrePiHobListPointerLib|TdShimPkg/Library/PrePiHobListPointerLibTdx/PrePiHobListPointerLibTdx.inf
+      MemoryAllocationLib|TdShimPkg/Library/PrePiMemoryAllocationLibTdx/PrePiMemoryAllocationLibTdx.inf
   }
 
   TdShimPkg/Payload/Payload.inf

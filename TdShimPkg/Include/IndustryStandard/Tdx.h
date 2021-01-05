@@ -15,7 +15,6 @@
 #ifndef _TDX_H_
 #define _TDX_H_
 
-#define EXIT_REASON_EXCEPTION_NMI       0
 #define EXIT_REASON_EXTERNAL_INTERRUPT  1
 #define EXIT_REASON_TRIPLE_FAULT        2
 
@@ -87,14 +86,64 @@
 #define TDCALL_TDSETCPUIDVE             5
 #define TDCALL_TDACCEPTPAGE             6
 
-#define TDVMCALL_MAPGPA                 0x10001
+#define TDVMCALL_CPUID                  0x0000a
+#define TDVMCALL_HALT                   0x0000c
+#define TDVMCALL_IO                     0x0001e
+#define TDVMCALL_RDMSR                  0x0001f
+#define TDVMCALL_WRMSR                  0x00020
+#define TDVMCALL_MMIO                   0x00030
+#define TDVMCALL_PCONFIG                0x00041
 
-#define TDINFO_NUM_VCPUS(X) ((X) & 0xffffffff)
-#define TDINFO_MAX_VCPUS(X) (((X) >> 32) & 0xffffffff)
-#define TDINFO_VCPUS_INDEX(X) ((X) & 0xffffffff)
-#define TDINFO_GPAW(X) ((X) & 0x3f)
+#define TDVMCALL_GET_TDVMCALL_INFO      0x10000
+#define TDVMCALL_MAPGPA                 0x10001
+#define TDVMCALL_GET_QUOTE              0x10002
+#define TDVMCALL_REPORT_FATAL_ERR       0x10003
+#define TDVMCALL_SETUP_EVENT_NOTIFY     0x10004
 
 #pragma pack(1)
+typedef struct {
+  UINT64  Data[6];
+} TDCALL_GENERIC_RETURN_DATA;
+
+typedef struct {
+  UINT64  Gpaw;
+  UINT64  Attributes;
+  UINT32  MaxVcpus;
+  UINT32  NumVcpus;
+  UINT64  Resv[3];
+} TDCALL_INFO_RETURN_DATA;
+
+typedef union {
+  UINT64  Val;
+  struct {
+    UINT32  Size:3;
+    UINT32  Direction:1;
+    UINT32  String:1;
+    UINT32  Rep:1;
+    UINT32  Encoding:1;
+    UINT32  Resv:9;
+    UINT32  Port:16;
+    UINT32  Resv2;
+  } Io;
+} VMX_EXIT_QUALIFICATION;
+
+typedef struct {
+  UINT32                  ExitReason;
+  UINT32                  Resv;
+  VMX_EXIT_QUALIFICATION  ExitQualification;
+  UINT64                  GuestLA;
+  UINT64                  GuestPA;
+  UINT32                  ExitInstructionLength;
+  UINT32                  ExitInstructionInfo;
+  UINT32                  Resv1;
+} TDCALL_VEINFO_RETURN_DATA;
+
+typedef union {
+  TDCALL_GENERIC_RETURN_DATA  Generic;
+  TDCALL_INFO_RETURN_DATA     TdInfo;
+  TDCALL_VEINFO_RETURN_DATA   VeInfo;
+} TD_RETURN_DATA; 
+
 /* data structure used in TDREPORT_STRUCT */
 typedef struct{
   UINT8         type;

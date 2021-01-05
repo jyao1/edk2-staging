@@ -4,8 +4,6 @@
 #include <Library/TdxLib.h>
 #include <Library/BaseMemoryLib.h>
 
-#include "InternalTdxLib.h"
-
 UINT64  mNumberOfDuplicatedAcceptedPages;
 
 UINT64
@@ -27,11 +25,11 @@ TdAcceptPages (
   Address = StartAddress;
 
   while (NumberOfPages--) {
-    Status = TdAcceptPage(Address);
+    Status = TdCall(TDCALL_TDACCEPTPAGE,Address, 0, 0, 0);
     if (Status != TDX_EXIT_REASON_SUCCESS) {
         if ((Status & ~0xFFULL) == TDX_EXIT_REASON_PAGE_ALREADY_ACCEPTED) {
           ++mNumberOfDuplicatedAcceptedPages;
-          DEBUG((DEBUG_INFO, "Address %llx already accepted. Total number of already accepted pages %ld\n",
+          DEBUG((DEBUG_VERBOSE, "Address %llx already accepted. Total number of already accepted pages %ld\n",
             Address, mNumberOfDuplicatedAcceptedPages));
         } else {
           DEBUG((DEBUG_ERROR, "Address %llx failed to be accepted. Error = %ld\n",

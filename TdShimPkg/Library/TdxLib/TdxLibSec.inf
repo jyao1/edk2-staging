@@ -27,10 +27,9 @@
 #
 
 [Sources]
-  InternalTdxLib.h
-  VirtualizationExceptionHandler.c
   AcceptPages.c
-  X64/Tdx.nasm
+  X64/Tdcall.nasm
+  X64/Tdvmcall.nasm
 
 [LibraryClasses]
   BaseLib
@@ -44,4 +43,3 @@
 [Pcd]
   gUefiTdShimPkgTokenSpaceGuid.PcdUseTdxAcceptPage
   gUefiTdShimPkgTokenSpaceGuid.PcdUseTdxEmulation
-  gUefiTdShimPkgTokenSpaceGuid.PcdIgnoreVeHalt

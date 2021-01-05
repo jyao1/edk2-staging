@@ -38,6 +38,7 @@
   DebugLib
   TimerLib
   IoLib
+  PcdLib
   TdxLib
 
 [Pcd]

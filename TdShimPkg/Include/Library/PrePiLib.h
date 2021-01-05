@@ -646,6 +646,28 @@ BuildMemoryAllocationHob (
   IN EFI_MEMORY_TYPE             MemoryType
   );
 
+
+/**
+  Allocates one or more 4KB pages of given type MemoryType.
+
+  Allocates the number of 4KB pages of MemoryType and returns a pointer to the
+  allocated buffer.  The buffer returned is aligned on a 4KB boundary.  If Pages is 0, then NULL
+  is returned.  If there is not enough memory remaining to satisfy the request, then NULL is
+  returned.
+
+  @param  Pages                 The number of 4 KB pages to allocate.
+  @param  MemoryType            Type of memory to use for this allocation.
+
+  @return A pointer to the allocated buffer or NULL if allocation fails.
+
+**/
+VOID *
+EFIAPI
+AllocatePagesWithMemoryType (
+  IN UINTN            Pages,
+  IN EFI_MEMORY_TYPE  MemoryType
+  );
+
 /**
   Allocates one or more 4KB pages of type EfiBootServicesData.
 
@@ -715,6 +737,26 @@ LoadPeCoffImage (
   OUT EFI_PHYSICAL_ADDRESS                      *ImageAddress,
   OUT UINT64                                    *ImageSize,
   OUT EFI_PHYSICAL_ADDRESS                      *EntryPoint
+  );
+
+EFI_STATUS
+EFIAPI
+LoadDxeCoreFromFfsFile (
+  IN EFI_PEI_FILE_HANDLE  FileHandle,
+  IN UINTN                StackSize
+  );
+
+EFI_STATUS
+EFIAPI
+LoadDxeCoreFromFv (
+  IN UINTN  *FvInstance,   OPTIONAL
+  IN UINTN  StackSize
+  );
+
+EFI_STATUS
+EFIAPI
+DecompressFirstFv (
+  VOID
   );
 
 #endif

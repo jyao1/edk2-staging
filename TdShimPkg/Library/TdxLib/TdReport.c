@@ -4,7 +4,6 @@
 #include <Library/BaseMemoryLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Include/TcgTdx.h>
-
 #include <IndustryStandard/Tdx.h>
 
 #define REPORT_STRUCT_SIZE    1024
@@ -48,7 +47,8 @@ DoTdReport(
   }
 
   // call TdReport
-  TdCallStatus = TdReport((UINT64)Report_Struct, (UINT64)Report_Data);
+  //TdCallStatus = TdReport((UINT64)Report_Struct, (UINT64)Report_Data);
+  TdCallStatus = TdCall(TDCALL_TDREPORT, (UINT64)Report_Struct, (UINT64)Report_Data, 0, 0);
 
   if(TdCallStatus == TDX_EXIT_REASON_SUCCESS){
     Status = EFI_SUCCESS;

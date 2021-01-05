@@ -111,8 +111,8 @@ SecCoreStartupWithStack (
 {
   EFI_SEC_PEI_HAND_OFF        SecCoreData;
   UINT32                      StackSize = EFI_PAGE_SIZE;
-  UINT64                      Vcpus;
   EFI_STATUS                  Status;
+  TD_RETURN_DATA              TdReturnData;
 
   DEBUG ((EFI_D_INFO,
     "SecCoreStartupWithStack(0x%x, 0x%x, 0x%x, 0x%x, 0x%x)\n",
@@ -125,9 +125,10 @@ SecCoreStartupWithStack (
   mTdInitVp = TdInitVp;
   mInfo = Info;
 
-  Status = TdInfo(NULL, NULL, &Vcpus, NULL, NULL, NULL);
+  Status = TdCall(TDCALL_TDINFO, 0, 0, 0, &TdReturnData);
   ASSERT(Status == EFI_SUCCESS);
-  mNumOfCpus = TDINFO_NUM_VCPUS(Vcpus);
+
+  mNumOfCpus = TdReturnData.TdInfo.NumVcpus;
   mMailBox = (VOID *)PcdGet64(PcdTdMailboxBase);
 
   //

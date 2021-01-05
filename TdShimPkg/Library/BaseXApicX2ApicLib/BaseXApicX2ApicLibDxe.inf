@@ -38,12 +38,13 @@
   DebugLib
   TimerLib
   IoLib
+  PcdLib
   TdxLib
 
 [Pcd]
   gUefiCpuPkgTokenSpaceGuid.PcdCpuInitIpiDelayInMicroSeconds  ## SOMETIMES_CONSUMES
   gUefiCpuPkgTokenSpaceGuid.PcdCpuLocalApicBaseAddress        ## SOMETIMES_CONSUMES
-  gUefiTdShimPkgTokenSpaceGuid.PcdUseTdxMsr                     ## CONSUMES
+  gUefiTdvfPkgTokenSpaceGuid.PcdUseTdxMsr                     ## CONSUMES
 
 [Protocols]
   gEfiCpuArchProtocolGuid                       ## CONSUMES

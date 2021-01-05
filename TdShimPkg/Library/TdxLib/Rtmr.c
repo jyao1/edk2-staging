@@ -4,7 +4,6 @@
 #include <Library/BaseMemoryLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Include/TcgTdx.h>
-
 #include <IndustryStandard/Tdx.h>
 //
 // MRTD     => PCR[0]
@@ -12,7 +11,7 @@
 // RTMR[1]  => PCR[2,3,4,5,6]
 // RTMR[2]  => PCR[8~15]
 // RTMR[3]  => TBD
-PCR_TDVF_EXTEND_MAP mPcrTdShimExtendMaps[PCR_COUNT] = {
+PCR_TDVF_EXTEND_MAP mPcrTdvfExtendMaps[PCR_COUNT] = {
 // pcr      reg       indx  index_in_event_log 
   {0 , REG_TYPE_MRTD, 0,    0},
   {1 , REG_TYPE_RTMR, 0,    1},
@@ -37,7 +36,7 @@ UINT32 GetMappedIndexInEventLog(UINT32 PCRIndex)
   PCR_TDVF_EXTEND_MAP       *PcrTdxMap;
 
   ASSERT(PCRIndex >= 0 && PCRIndex < PCR_COUNT);
-  PcrTdxMap = (PCR_TDVF_EXTEND_MAP*)&mPcrTdShimExtendMaps[PCRIndex];
+  PcrTdxMap = (PCR_TDVF_EXTEND_MAP*)&mPcrTdvfExtendMaps[PCRIndex];
   return PcrTdxMap->EventlogIndex;
 }
 
@@ -65,18 +64,18 @@ ExtendTdRtmr(
   UINT64                *Buffer;
   UINT64                TdCallStatus;
   UINT64                Index;
-  PCR_TDVF_EXTEND_MAP   PcrTdShimExtendMap;
+  PCR_TDVF_EXTEND_MAP   PcrTdvfExtendMap;
 
   Status = EFI_SUCCESS;
 
   ASSERT(PcrIndex >= 0 && PcrIndex < PCR_COUNT);
   ASSERT(DataLen == SHA384_DIGEST_SIZE);
 
-  PcrTdShimExtendMap = mPcrTdShimExtendMaps[PcrIndex];
-  ASSERT(PcrTdShimExtendMap.Pcr == PcrIndex);
+  PcrTdvfExtendMap = mPcrTdvfExtendMaps[PcrIndex];
+  ASSERT(PcrTdvfExtendMap.Pcr == PcrIndex);
 
-  if(PcrTdShimExtendMap.RegType == REG_TYPE_RTMR){
-    Index = PcrTdShimExtendMap.Index;
+  if(PcrTdvfExtendMap.RegType == REG_TYPE_RTMR){
+    Index = PcrTdvfExtendMap.Index;
   }else{
     DEBUG((DEBUG_INFO, "PCR[%d] is not mapped to TDVF RTMR\n", PcrIndex));
     return EFI_UNSUPPORTED;
@@ -93,7 +92,8 @@ ExtendTdRtmr(
   DEBUG((DEBUG_INFO, "Extend to Rtmr[%d]. Pcr=%d\n", Index, PcrIndex));
 
   // call TdExtendRtmr
-  TdCallStatus = TdExtendRtmr(Buffer, Index);
+  //TdCallStatus = TdExtendRtmr(Buffer, Index);
+  TdCallStatus = TdCall(TDCALL_TDEXTENDRTMR, (UINT64)Buffer, Index, 0, 0);
 
   if(TdCallStatus == TDX_EXIT_REASON_SUCCESS){
     Status = EFI_SUCCESS;

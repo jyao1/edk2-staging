@@ -27,12 +27,11 @@
 #
 
 [Sources]
-  InternalTdxLib.h
-  VirtualizationExceptionHandler.c
-  AcceptPages.c
   Rtmr.c
   TdReport.c
-  X64/Tdx.nasm
+  AcceptPages.c
+  X64/Tdcall.nasm
+  X64/Tdvmcall.nasm
 
 [LibraryClasses]
   BaseLib
@@ -40,13 +39,10 @@
   DebugLib
   MemoryAllocationLib
 
-
 [Packages]
   MdePkg/MdePkg.dec
   TdShimPkg/TdShimPkg.dec
 
 [Pcd]
-  gUefiTdShimPkgTokenSpaceGuid.PcdUseTdxAcceptPage
+  gUefiTdvfPkgTokenSpaceGuid.PcdUseTdxAcceptPage
   gUefiTdShimPkgTokenSpaceGuid.PcdUseTdxEmulation
-  gUefiTdShimPkgTokenSpaceGuid.PcdIgnoreVeHalt
-
