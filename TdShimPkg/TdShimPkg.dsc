@@ -174,9 +174,9 @@ DEFINE CRYPT_LIB = MBEDTLS
 [LibraryClasses.common.SEC]
 !if $(QEMU_PLATFORM) == TRUE
   QemuFwCfgLib|TdvfPkg/Library/QemuFwCfgLibTdx/QemuFwCfgSecLibTdx.inf
-  TdvfPlatformLib|TdvfPkg/Library/TdvfPlatformLibQemu/TdvfPlatformLibQemuSec.inf
+  TdvfPlatformLib|TdShimPkg/Library/TdvfPlatformLibQemu/TdvfPlatformLibQemuSec.inf
 !else
-  TdvfPlatformLib|TdvfPkg/Library/TdvfPlatformLibDummy//TdvfPlatformLibDummySec.inf
+  TdvfPlatformLib|TdShimPkg/Library/TdvfPlatformLibDummy//TdvfPlatformLibDummySec.inf
 !endif
 
 ################################################################################

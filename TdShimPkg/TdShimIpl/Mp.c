@@ -104,18 +104,21 @@ MpAcceptMemoryResourceRange (
   UINT64                      Pages;
   EFI_PHYSICAL_ADDRESS        Stride;
   EFI_PHYSICAL_ADDRESS        AcceptSize;
-  volatile MP_WAKEUP_MAILBOX  *MailBox;         
+  volatile MP_WAKEUP_MAILBOX  *MailBox;
+
+  DEBUG((DEBUG_VERBOSE, "MpAcceptMemoryResourceRange (0x%016lx - 0x%016lx) ...\n", PhysicalAddress, PhysicalEnd));
   
   MailBox = (volatile MP_WAKEUP_MAILBOX  *)GetMailBox();
   AcceptSize = FixedPcdGet64(PcdTdxAcceptPageChunkSize);
+if (GetNumCpus() != 1) {
   MpSerializeStart();
-
   MpSendWakeupCommand(MpProtectedModeWakeupCommandAcceptPages,
     0,
     PhysicalAddress,
     PhysicalEnd,
     AcceptSize,
     (UINT64)&MailBox->Tallies[0]);
+}
 
   //
   // All cpus share the burden of accepting the pages
@@ -141,7 +144,9 @@ MpAcceptMemoryResourceRange (
     //
     PhysicalAddress += Stride;
   }
+if (GetNumCpus() != 1) {
   MpSerializeEnd();
+}
 
   DEBUG((DEBUG_VERBOSE, "Tallies %x %x %x %x %x %x %x %x\n",
     MailBox->Tallies[0],
@@ -153,4 +158,6 @@ MpAcceptMemoryResourceRange (
     MailBox->Tallies[6],
     MailBox->Tallies[7]));
 
+  DEBUG((DEBUG_VERBOSE, "MpAcceptMemoryResourceRange Done\n"));
+  
 }

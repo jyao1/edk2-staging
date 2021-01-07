@@ -37,7 +37,7 @@ volatile VOID *mMailBox = NULL;
 // Hold * from VMM
 VOID    *mTdInitVp = NULL;
 UINTN   mInfo = 0;
-UINT32  mNumOfCpus = 0;
+UINT32  mNumOfCpus = 1;
 
 
 #define SEC_IDT_ENTRY_COUNT  34
@@ -136,41 +136,25 @@ SecCoreStartupWithStack (
   IN UINTN                            Info
   )
 {
-  SEC_IDT_TABLE               IdtTableInStack;
   EFI_SEC_PEI_HAND_OFF        SecCoreData;
   UINT32                      StackSize = EFI_PAGE_SIZE;
   EFI_STATUS                  Status;
+/*
   TD_RETURN_DATA              TdReturnData;
   IA32_DESCRIPTOR             IdtDescriptor;
   UINT32                      Index;
+*/
+  VOID                        *VmmHobList;
+/*
+  VOID                        *Address;
+  VOID                        *ApLoopFunc = NULL;
+  UINT32                      RelocationPages;
+  MP_RELOCATION_MAP           RelocationMap;
+  MP_WAKEUP_MAILBOX           *RelocatedMailBox;
+*/
+  EFI_TDX_METADATA            *MetaData;
 
-
-  //
-  // Initialize IDT
-  //
-  IdtTableInStack.PeiService = NULL;
-  for (Index = 0; Index < SEC_IDT_ENTRY_COUNT; Index ++) {
-    CopyMem (&IdtTableInStack.IdtTable[Index], &mIdtEntryTemplate, sizeof (mIdtEntryTemplate));
-  }
-
-  IdtDescriptor.Base  = (UINTN)&IdtTableInStack.IdtTable;
-  IdtDescriptor.Limit = (UINT16)(sizeof (IdtTableInStack.IdtTable) - 1);
-
-  AsmWriteIdtr (&IdtDescriptor);
-  //
-  // Setup the default exception handlers
-  //
-  Status = InitializeCpuExceptionHandlers (NULL);
-  ASSERT_EFI_ERROR (Status);
-
-
-
-  //
-  // Some Constructors require hoblist initialized.
-  // Measure and Migrate HobList before anything gets added to it
-  //
-  ProcessLibraryConstructorList (NULL, NULL);
-
+  DEBUG ((EFI_D_INFO, "TD Shim Enter\n"));
 
   DEBUG ((EFI_D_INFO,
     "SecCoreStartupWithStack(0x%x, 0x%x, 0x%x, 0x%x, 0x%x)\n",
@@ -182,11 +166,12 @@ SecCoreStartupWithStack (
 
   mTdInitVp = TdInitVp;
   mInfo = Info;
-
+/*
   Status = TdCall(TDCALL_TDINFO, 0, 0, 0, &TdReturnData);
   ASSERT(Status == EFI_SUCCESS);
 
   mNumOfCpus = TdReturnData.TdInfo.NumVcpus;
+*/
   mMailBox = (VOID *)PcdGet64(PcdTdMailboxBase);
 
   //
@@ -223,43 +208,6 @@ SecCoreStartupWithStack (
   //
   InitializeApicTimer (0, MAX_UINT32, TRUE, 5);
   DisableApicTimerInterrupt ();
-  
-  //
-  // Initialize Debug Agent to support source level debug in SEC/DXE phases before memory ready.
-  //
-  InitializeDebugAgent (DEBUG_AGENT_INIT_PREMEM_SEC, &SecCoreData, SecStartupPhase2);
-}
-
-
-/**
-  Caller provided function to be invoked at the end of InitializeDebugAgent().
-
-  Entry point to the C language phase of SEC. After the SEC assembly
-  code has initialized some temporary memory and set up the stack,
-  the control is transferred to this function.
-
-  @param[in] Context    The first input parameter of InitializeDebugAgent().
-
-**/
-VOID
-EFIAPI
-SecStartupPhase2(
-  IN VOID                     *Context
-  )
-{
-  EFI_SEC_PEI_HAND_OFF        *SecCoreData;
-  EFI_FIRMWARE_VOLUME_HEADER  *BootFv;
-  EFI_STATUS                  Status;
-  EFI_HOB_PLATFORM_INFO       PlatformInfoHob;
-  VOID                        *VmmHobList;
-  VOID                        *Address;
-  VOID                        *ApLoopFunc = NULL;
-  UINT32                      RelocationPages;
-  MP_RELOCATION_MAP           RelocationMap;
-  MP_WAKEUP_MAILBOX           *RelocatedMailBox;
-  EFI_TDX_METADATA            *MetaData;
-
-  SecCoreData = (EFI_SEC_PEI_HAND_OFF *) Context;
 
   //
   // Make any runtime changes to metadata
@@ -268,7 +216,6 @@ SecStartupPhase2(
   DEBUG((DEBUG_INFO, "MetaData(%p): bfv 0x%llx vars 0x%llx\n",
     MetaData, MetaData->Sections[0].MemoryAddress, MetaData->Sections[1].MemoryAddress));
 
-  ZeroMem (&PlatformInfoHob, sizeof(PlatformInfoHob));
   VmmHobList = (VOID *)mTdInitVp;
   ASSERT(VmmHobList != NULL);
 
@@ -280,11 +227,8 @@ SecStartupPhase2(
   // Tranfer the Hoblist to the final Hoblist for DXe
   //
   TransferHobList(VmmHobList);
-  //
-  // Initialize Platform
-  //
-  TdvfPlatformInitialize(&PlatformInfoHob);
 
+/*
   //
   // Get information needed to setup aps running in their
   // run loop in allocated acpi reserved memory
@@ -312,9 +256,7 @@ SecStartupPhase2(
   RelocatedMailBox->Command = MpProtectedModeWakeupCommandNoop;
   RelocatedMailBox->ApicId = MP_CPU_PROTECTED_MODE_MAILBOX_APICID_INVALID;
   RelocatedMailBox->WakeUpVector = 0;
-  
-  PlatformInfoHob.RelocatedMailBox = (UINT64)RelocatedMailBox;
-
+*/
   //
   // Create and event log entry so VMM Hoblist can be measured
   //
@@ -323,7 +265,7 @@ SecStartupPhase2(
   // Wakup APs and have been move to the finalized run loop
   // They will spin until guest OS wakes them
   //
-
+/*
   MpSerializeStart();
 
   MpSendWakeupCommand(
@@ -333,24 +275,21 @@ SecStartupPhase2(
     0,
     0,
     0);
-
+*/
   //
   // TDVF must not use any CpuHob from input HobList.
   // It must create its own using GPWA from VMM and 0 for SizeOfIoSpace
   //
   BuildCpuHob(GET_GPAW_INIT_STATE(mInfo), 16);
 
-  BootFv = (EFI_FIRMWARE_VOLUME_HEADER *)SecCoreData->BootFirmwareVolumeBase;
   BuildFvHob ((UINTN)BootFv, BootFv->FvLength);
 
   // According to SAS Table 8-1, BFV is measured by VMM
   //TdxMeasureFvImage((UINTN)BootFv, BootFv->FvLength, 0);
 
-  MeasureConfigurationVolume (MetaData->Sections[1].MemoryAddress);
+  // MeasureConfigurationVolume (MetaData->Sections[1].MemoryAddress);
 
-  BuildGuidDataHob(&gUefiTdShimPkgPlatformGuid, &PlatformInfoHob, sizeof(EFI_HOB_PLATFORM_INFO));
-
-  BuildStackHob ((UINTN)SecCoreData->StackBase, SecCoreData->StackSize <<=1 );
+  BuildStackHob ((UINTN)SecCoreData.StackBase, SecCoreData.StackSize <<=1 );
 
   BuildResourceDescriptorHob (
     EFI_RESOURCE_SYSTEM_MEMORY,
@@ -361,8 +300,8 @@ SecStartupPhase2(
     EFI_RESOURCE_ATTRIBUTE_WRITE_THROUGH_CACHEABLE |
     EFI_RESOURCE_ATTRIBUTE_WRITE_BACK_CACHEABLE |
     EFI_RESOURCE_ATTRIBUTE_TESTED,
-    (UINT64)SecCoreData->TemporaryRamBase,
-    (UINT64)SecCoreData->TemporaryRamSize);
+    (UINT64)SecCoreData.TemporaryRamBase,
+    (UINT64)SecCoreData.TemporaryRamSize);
 
   BuildMemoryAllocationHob (
     FixedPcdGet32(PcdTdMailboxBase),
@@ -374,7 +313,9 @@ SecStartupPhase2(
   // Load the DXE Core and transfer control to it
   //
 
-  Status = DxeLoadCore (0);
+  DEBUG ((EFI_D_INFO, "DxeLoadCore payload...\n"));
+
+  Status = DxeLoadCore ((VOID *)(UINTN)PcdGet32(PcdPayloadBase));
   ASSERT_EFI_ERROR (Status);
   ASSERT (FALSE);
   CpuDeadLoop ();

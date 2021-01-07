@@ -50,12 +50,13 @@
   PeCoffLib
   PeCoffGetEntryPointLib
   PeCoffExtraActionLib
-  #PeiServicesLib
   LocalApicLib
-  TdvfPlatformLib
   CpuExceptionHandlerLib
   SynchronizationLib
   TdxLib
+  HobLib
+  MemoryAllocationLib
+  IoLib
 
 [Guids]
   gEfiHobMemoryAllocModuleGuid
@@ -63,6 +64,7 @@
   gUefiTdShimPkgPlatformGuid
   gEfiMemoryTypeInformationGuid
   gTcgEvent2EntryHobGuid
+  gZeroGuid
 
 [Ppis]
   gEfiTemporaryRamSupportPpiGuid                # PPI ALWAYS_PRODUCED
@@ -85,6 +87,9 @@
   gUefiTdShimPkgTokenSpaceGuid.PcdBfvBase
   gUefiTdShimPkgTokenSpaceGuid.PcdBfvRawDataOffset
   gUefiTdShimPkgTokenSpaceGuid.PcdBfvSize
+  gUefiTdShimPkgTokenSpaceGuid.PcdPayloadBase
+  gUefiTdShimPkgTokenSpaceGuid.PcdPayloadRawDataOffset
+  gUefiTdShimPkgTokenSpaceGuid.PcdPayloadSize
   gUefiTdShimPkgTokenSpaceGuid.PcdUseTdxEmulation
   gUefiTdShimPkgTokenSpaceGuid.PcdTdxAcceptPageChunkSize
   gEfiMdeModulePkgTokenSpaceGuid.PcdSetNxForStack               ## CONSUMES

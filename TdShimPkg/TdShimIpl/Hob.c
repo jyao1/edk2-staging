@@ -17,9 +17,10 @@
 #include <Library/PrePiHobListPointerLib.h>
 
 #include "TdShimIpl.h"
-#include <Library/TdvfPlatformLib.h>
 #include <TcgTdx.h>
 #include <IndustryStandard/UefiTcgPlatform.h>
+
+#define EFI_RESOURCE_ATTRIBUTE_ENCRYPTED            0x04000000
 
 VOID
 EFIAPI
@@ -33,18 +34,38 @@ DEBUG_HOBLIST (
   // Parse the HOB list until end of list or matching type is found.
   //
   while (!END_OF_HOB_LIST (Hob)) {
-    DEBUG((DEBUG_INFO, "HOB(%p) : %x %x\n", Hob, Hob.Header->HobType, Hob.Header->HobLength));
+    DEBUG((DEBUG_INFO, "HOB(%p) : HobType - %x\n", Hob, Hob.Header->HobType));
     switch (Hob.Header->HobType) {
     case EFI_HOB_TYPE_RESOURCE_DESCRIPTOR:
-      DEBUG((DEBUG_INFO, "\t: %x %x %llx %llx\n", 
+      switch (Hob.ResourceDescriptor->ResourceType) {
+      case EFI_RESOURCE_SYSTEM_MEMORY:
+        DEBUG ((DEBUG_INFO, "\tMem :"));
+        break;
+      case EFI_RESOURCE_MEMORY_MAPPED_IO:
+        DEBUG ((DEBUG_INFO, "\tMmio:"));
+        break;
+      case EFI_RESOURCE_IO:
+        DEBUG ((DEBUG_INFO, "\tIo  :"));
+        break;
+      case EFI_RESOURCE_FIRMWARE_DEVICE:
+        DEBUG ((DEBUG_INFO, "\tFirm:"));
+        break;
+      case EFI_RESOURCE_MEMORY_RESERVED:
+        DEBUG ((DEBUG_INFO, "\tRsvd:"));
+        break;
+      default:
+        DEBUG ((DEBUG_INFO, "\t<??>:"));
+        break;
+      }
+      DEBUG((DEBUG_INFO, "ResType-%x, 0x%016lx-0x%016llx (Attribute-%x)\n", 
         Hob.ResourceDescriptor->ResourceType,
-        Hob.ResourceDescriptor->ResourceAttribute,
         Hob.ResourceDescriptor->PhysicalStart,
-        Hob.ResourceDescriptor->ResourceLength));
+        Hob.ResourceDescriptor->ResourceLength,
+        Hob.ResourceDescriptor->ResourceAttribute));
       
       break;
     case EFI_HOB_TYPE_MEMORY_ALLOCATION:
-      DEBUG((DEBUG_INFO, "\t: %llx %llx %x\n", 
+      DEBUG((DEBUG_INFO, "\tAllo: 0x%016llx-0x%016lx (Type-%x)\n", 
         Hob.MemoryAllocation->AllocDescriptor.MemoryBaseAddress,
         Hob.MemoryAllocation->AllocDescriptor.MemoryLength,
         Hob.MemoryAllocation->AllocDescriptor.MemoryType));
@@ -213,7 +234,7 @@ LogHobList (
 {
   EFI_PEI_HOB_POINTERS          Hob;
   TDX_HANDOFF_TABLE_POINTERS2   HandoffTables;
-  EFI_STATUS                    Status;
+//  EFI_STATUS                    Status;
 
   Hob.Raw = (UINT8 *) VmmHobList;
 
@@ -233,7 +254,7 @@ LogHobList (
   HandoffTables.NumberOfTables = 1;
   CopyGuid (&(HandoffTables.TableEntry[0].VendorGuid), &gUefiTdShimPkgTokenSpaceGuid);
   HandoffTables.TableEntry[0].VendorTable = (VOID *)VmmHobList;
-
+/*
   Status = CreateTdxExtendEvent (
               1,                                // PCRIndex
               EV_EFI_HANDOFF_TABLES2,            // EventType
@@ -244,4 +265,5 @@ LogHobList (
               );
   
   ASSERT_EFI_ERROR (Status);
+*/
 }

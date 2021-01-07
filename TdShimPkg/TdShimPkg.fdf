@@ -48,61 +48,11 @@ gUefiTdShimPkgTokenSpaceGuid.PcdTempStackBase|gUefiTdShimPkgTokenSpaceGuid.PcdTe
 $(COMBINED_TEMPHEAP_OFFSET)|$(TEMPHEAP_SIZE)
 gUefiTdShimPkgTokenSpaceGuid.PcdTempRamBase|gUefiTdShimPkgTokenSpaceGuid.PcdTempRamSize
 
+$(COMBINED_PAYLOAD_OFFSET)|$(PAYLOAD_SIZE)
+FV = PAYLOAD
+
 $(COMBINED_MAINFV_OFFSET)|$(MAINFV_SIZE)
 FV = MAIN
-
-
-
-#
-# Build the variable store and the firmware code as separate flash device
-# images.
-#
-[FD.TDVF_VARS]
-BaseAddress   = $(FW_BASE_ADDRESS) 
-Size          = $(VARS_SIZE) 
-ErasePolarity = 1
-BlockSize     = $(BLOCK_SIZE)
-NumBlocks     = $(VARS_BLOCKS)
-    
-!include VarStore.fdf.inc
-
-    
-[FD.TDVF_MAIN]
-BaseAddress   = $(MAIN_BASE_ADDRESS)
-Size          = $(MAIN_SIZE)
-ErasePolarity = 1
-BlockSize     = $(BLOCK_SIZE)
-NumBlocks     = $(MAIN_BLOCKS)
-
-
-$(MAIN_TDMAILBOX_OFFSET)|$(TDMAILBOX_SIZE)
-gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxBase|gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxSize
-DATA = {
-  0x00,0x00,0x00,0x00,
-  0xff,0xff,0xff,0xff,
-  0x00,0x00,0x00,0x00,
-  0x00,0x00,0x00,0x00,
-  0x00,0x00,0x00,0x00,
-  0x00,0x00,0x00,0x00,
-  0x00,0x00,0x00,0x00,
-  0x00,0x00,0x00,0x00
-}
-
-$(MAIN_TDHOB_OFFSET)|$(TDHOB_SIZE)
-gUefiTdShimPkgTokenSpaceGuid.PcdTdHobBase|gUefiTdShimPkgTokenSpaceGuid.PcdTdHobSize
-
-$(MAIN_TEMPSTACK_OFFSET)|$(TEMPSTACK_SIZE)
-gUefiTdShimPkgTokenSpaceGuid.PcdTempStackBase|gUefiTdShimPkgTokenSpaceGuid.PcdTempStackSize
-
-$(MAIN_TEMPHEAP_OFFSET)|$(TEMPHEAP_SIZE)
-gUefiTdShimPkgTokenSpaceGuid.PcdTempRamBase|gUefiTdShimPkgTokenSpaceGuid.PcdTempRamSize
-
-$(MAINFV_OFFSET)|$(MAINFV_SIZE)
-FV = MAIN
-
-################################################################################
-
-!include TdvfQemuFvMain.fdf.inc
 
 [FV.MAIN]
 BlockSize          = 0x1000
@@ -131,19 +81,28 @@ READ_LOCK_STATUS   = TRUE
 #
 INF  TdShimPkg/TdShimIpl/TdShimIpl.inf
 
-
 INF  RuleOverride=RESET_VECTOR TdShimPkg/ResetVector/ResetVector.inf
 
-  FILE FV_IMAGE = 9E21FD93-9C72-4c15-8C4B-E77F1DB2D792 {
-    SECTION COMPRESS {
-     #
-     # These firmware volumes will have files placed in them uncompressed,
-     # and then both firmware volumes will be compressed in a single
-     # compression operation in order to achieve better overall compression.
-     #
-     SECTION FV_IMAGE = DXEFV
-   }
- }
+[FV.PAYLOAD]
+BlockSize          = 0x1000
+FvAlignment        = 16
+ERASE_POLARITY     = 1
+MEMORY_MAPPED      = TRUE
+STICKY_WRITE       = TRUE
+LOCK_CAP           = TRUE
+LOCK_STATUS        = TRUE
+WRITE_DISABLED_CAP = TRUE
+WRITE_ENABLED_CAP  = TRUE
+WRITE_STATUS       = TRUE
+WRITE_LOCK_CAP     = TRUE
+WRITE_LOCK_STATUS  = TRUE
+READ_DISABLED_CAP  = TRUE
+READ_ENABLED_CAP   = TRUE
+READ_STATUS        = TRUE
+READ_LOCK_CAP      = TRUE
+READ_LOCK_STATUS   = TRUE
+
+INF  TdShimPkg/Payload/Payload.inf
 
 ################################################################################
 

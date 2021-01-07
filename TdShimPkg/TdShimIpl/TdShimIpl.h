@@ -129,15 +129,8 @@ GetNumCpus(
 EFI_STATUS
 EFIAPI
 DxeLoadCore (
-  IN INTN FvInstance
+  IN  EFI_FIRMWARE_VOLUME_HEADER       *FirmwareVolumePtr
   );
-
-VOID
-EFIAPI
-SecStartupPhase2 (
-  IN VOID                     *Context
-  );
-
 
 VOID
 EFIAPI

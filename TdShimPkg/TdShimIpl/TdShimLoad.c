@@ -13,6 +13,8 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #include <Library/BaseMemoryLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Library/PcdLib.h>
+#include <Library/PeCoffLib.h>
+#include <Library/PeCoffGetEntryPointLib.h>
 
 #include <Guid/MemoryTypeInformation.h>
 #include <Guid/MemoryAllocationHob.h>
@@ -115,47 +117,268 @@ HandOffToDxeCore (
 }
 
 /**
-   Searches DxeCore in all firmware Volumes and loads the first
-   instance that contains DxeCore.
+  Locates a section within a series of sections
+  with the specified section type.
 
-   @return FileHandle of DxeCore to load DxeCore.
+  The Instance parameter indicates which instance of the section
+  type to return. (0 is first instance, 1 is second...)
+
+  @param[in]   Sections        The sections to search
+  @param[in]   SizeOfSections  Total size of all sections
+  @param[in]   SectionType     The section type to locate
+  @param[in]   Instance        The section instance number
+  @param[out]  FoundSection    The FFS section if found
+
+  @retval EFI_SUCCESS           The file and section was found
+  @retval EFI_NOT_FOUND         The file and section was not found
+  @retval EFI_VOLUME_CORRUPTED  The firmware volume was corrupted
 
 **/
 EFI_STATUS
-FindDxeCore (
-  IN INTN   FvInstance,
-  IN OUT     EFI_PEI_FILE_HANDLE *FileHandle
+FindFfsSectionInstance (
+  IN  VOID                             *Sections,
+  IN  UINTN                            SizeOfSections,
+  IN  EFI_SECTION_TYPE                 SectionType,
+  IN  UINTN                            Instance,
+  OUT EFI_COMMON_SECTION_HEADER        **FoundSection
   )
 {
-  EFI_STATUS            Status;
-  EFI_PEI_FV_HANDLE     VolumeHandle;
+  EFI_PHYSICAL_ADDRESS        CurrentAddress;
+  UINT32                      Size;
+  EFI_PHYSICAL_ADDRESS        EndOfSections;
+  EFI_COMMON_SECTION_HEADER   *Section;
+  EFI_PHYSICAL_ADDRESS        EndOfSection;
 
-  ASSERT(FileHandle != NULL);
-  *FileHandle = NULL;
+  //
+  // Loop through the FFS file sections within the PEI Core FFS file
+  //
+  EndOfSection = (EFI_PHYSICAL_ADDRESS)(UINTN) Sections;
+  EndOfSections = EndOfSection + SizeOfSections;
+  for (;;) {
+    if (EndOfSection == EndOfSections) {
+      break;
+    }
+    CurrentAddress = (EndOfSection + 3) & ~(3ULL);
+    if (CurrentAddress >= EndOfSections) {
+      return EFI_VOLUME_CORRUPTED;
+    }
 
-  if (FvInstance != -1) {
+    Section = (EFI_COMMON_SECTION_HEADER*)(UINTN) CurrentAddress;
+
+    Size = SECTION_SIZE (Section);
+    if (Size < sizeof (*Section)) {
+      return EFI_VOLUME_CORRUPTED;
+    }
+
+    EndOfSection = CurrentAddress + Size;
+    if (EndOfSection > EndOfSections) {
+      return EFI_VOLUME_CORRUPTED;
+    }
+
     //
-    // Caller passed in a specific FV to try, so only try that one
+    // Look for the requested section type
     //
-
-    Status = FfsFindNextVolume (FvInstance, &VolumeHandle);
-    if (!EFI_ERROR (Status)) {
-      Status = FfsFindNextFile (EFI_FV_FILETYPE_FIRMWARE_VOLUME_IMAGE, VolumeHandle, FileHandle);
-      if (*FileHandle) {
-        // Assume the FV that contains the SEC (our code) also contains a compressed FV.
-        Status = FfsProcessFvFile (*FileHandle);
-        ASSERT_EFI_ERROR (Status);
-        Status = FfsAnyFvFindFirstFile (EFI_FV_FILETYPE_DXE_CORE, &VolumeHandle, FileHandle);
+    if (Section->Type == SectionType) {
+      if (Instance == 0) {
+        *FoundSection = Section;
+        return EFI_SUCCESS;
+      } else {
+        Instance--;
       }
     }
-  } else { 
-    // Assume the FV that contains the SEC (our code) also contains a compressed FV.
-    Status = DecompressFirstFv ();
-    ASSERT_EFI_ERROR (Status);
-    Status = FfsAnyFvFindFirstFile (EFI_FV_FILETYPE_DXE_CORE, &VolumeHandle, FileHandle);
   }
+
+  return EFI_NOT_FOUND;
+}
+
+/**
+  Locates a section within a series of sections
+  with the specified section type.
+
+  @param[in]   Sections        The sections to search
+  @param[in]   SizeOfSections  Total size of all sections
+  @param[in]   SectionType     The section type to locate
+  @param[out]  FoundSection    The FFS section if found
+
+  @retval EFI_SUCCESS           The file and section was found
+  @retval EFI_NOT_FOUND         The file and section was not found
+  @retval EFI_VOLUME_CORRUPTED  The firmware volume was corrupted
+
+**/
+EFI_STATUS
+FindFfsSectionInSections (
+  IN  VOID                             *Sections,
+  IN  UINTN                            SizeOfSections,
+  IN  EFI_SECTION_TYPE                 SectionType,
+  OUT EFI_COMMON_SECTION_HEADER        **FoundSection
+  )
+{
+  return FindFfsSectionInstance (
+           Sections,
+           SizeOfSections,
+           SectionType,
+           0,
+           FoundSection
+           );
+}
+
+/**
+  Locates a FFS file with the specified file type and a section
+  within that file with the specified section type.
+
+  @param[in]   Fv            The firmware volume to search
+  @param[in]   FileType      The file type to locate
+  @param[in]   SectionType   The section type to locate
+  @param[out]  FoundSection  The FFS section if found
+
+  @retval EFI_SUCCESS           The file and section was found
+  @retval EFI_NOT_FOUND         The file and section was not found
+  @retval EFI_VOLUME_CORRUPTED  The firmware volume was corrupted
+
+**/
+EFI_STATUS
+FindFfsFileAndSection (
+  IN  EFI_FIRMWARE_VOLUME_HEADER       *Fv,
+  IN  EFI_FV_FILETYPE                  FileType,
+  IN  EFI_SECTION_TYPE                 SectionType,
+  OUT EFI_COMMON_SECTION_HEADER        **FoundSection
+  )
+{
+  EFI_STATUS                  Status;
+  EFI_PHYSICAL_ADDRESS        CurrentAddress;
+  EFI_PHYSICAL_ADDRESS        EndOfFirmwareVolume;
+  EFI_FFS_FILE_HEADER         *File;
+  UINT32                      Size;
+  EFI_PHYSICAL_ADDRESS        EndOfFile;
+
+  if (Fv->Signature != EFI_FVH_SIGNATURE) {
+    DEBUG ((EFI_D_ERROR, "FV at %p does not have FV header signature\n", Fv));
+    return EFI_VOLUME_CORRUPTED;
+  }
+
+  CurrentAddress = (EFI_PHYSICAL_ADDRESS)(UINTN) Fv;
+  EndOfFirmwareVolume = CurrentAddress + Fv->FvLength;
+
+  //
+  // Loop through the FFS files in the Boot Firmware Volume
+  //
+  for (EndOfFile = CurrentAddress + Fv->HeaderLength; ; ) {
+
+    CurrentAddress = (EndOfFile + 7) & ~(7ULL);
+    if (CurrentAddress > EndOfFirmwareVolume) {
+      return EFI_VOLUME_CORRUPTED;
+    }
+
+    File = (EFI_FFS_FILE_HEADER*)(UINTN) CurrentAddress;
+    Size = FFS_FILE_SIZE (File);
+    if (Size < (sizeof (*File) + sizeof (EFI_COMMON_SECTION_HEADER))) {
+      return EFI_VOLUME_CORRUPTED;
+    }
+
+    EndOfFile = CurrentAddress + Size;
+    if (EndOfFile > EndOfFirmwareVolume) {
+      return EFI_VOLUME_CORRUPTED;
+    }
+
+    //
+    // Look for the request file type
+    //
+    if (File->Type != FileType) {
+      continue;
+    }
+
+    Status = FindFfsSectionInSections (
+               (VOID*) (File + 1),
+               (UINTN) EndOfFile - (UINTN) (File + 1),
+               SectionType,
+               FoundSection
+               );
+    if (!EFI_ERROR (Status) || (Status == EFI_VOLUME_CORRUPTED)) {
+      return Status;
+    }
+  }
+}
+
+
+
+EFI_STATUS
+FindHypervisorFwImageBaseInFv (
+  IN  EFI_FIRMWARE_VOLUME_HEADER        *Fv,
+  OUT  EFI_PHYSICAL_ADDRESS             *HypervisorFwImageBase
+  )
+{
+  EFI_STATUS                  Status;
+  EFI_COMMON_SECTION_HEADER   *Section;
+
+  Status = FindFfsFileAndSection (
+             Fv,
+             EFI_FV_FILETYPE_DXE_CORE,
+             EFI_SECTION_PE32,
+             &Section
+             );
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Unable to find Hypervisor FW image\n"));
+    return Status;
+  }
+
+  *HypervisorFwImageBase = (EFI_PHYSICAL_ADDRESS)(UINTN)(Section + 1);
+  return EFI_SUCCESS;
+}
+
+/*
+  Find and return Hypervisor FW entry point.
+**/
+VOID
+FindAndReportEntryPoints (
+  IN  EFI_FIRMWARE_VOLUME_HEADER       *FirmwareVolumePtr,
+  OUT UINTN                            *HypervisorFwEntryPoint,
+  OUT UINTN                            *BaseAddress
+  )
+{
+  EFI_STATUS                       Status;
+  VOID                             *BaseHypervisorFw;
+  EFI_PHYSICAL_ADDRESS             HypervisorFwImageBase;
+  PE_COFF_LOADER_IMAGE_CONTEXT     ImageContext;
+  UINTN                            Pages;
+
+  *HypervisorFwEntryPoint = 0;
+  FindHypervisorFwImageBaseInFv (FirmwareVolumePtr, &HypervisorFwImageBase);
+
+  if (*(UINT16 *)(UINTN)HypervisorFwImageBase == EFI_IMAGE_DOS_SIGNATURE) {
+    DEBUG ((DEBUG_ERROR, "PE FW Image\n"));
+    ImageContext.Handle = (VOID *)(UINTN)HypervisorFwImageBase;
+    ImageContext.ImageRead = PeCoffLoaderImageReadFromMemory;
+    Status = PeCoffLoaderGetImageInfo(&ImageContext);
+    if (ImageContext.SectionAlignment > EFI_PAGE_SIZE) {
+      Pages = EFI_SIZE_TO_PAGES ((UINTN) (ImageContext.ImageSize + ImageContext.SectionAlignment));
+    } else {
+      Pages = EFI_SIZE_TO_PAGES ((UINTN) ImageContext.ImageSize);
+    }
+
+    BaseHypervisorFw = AllocatePages (Pages);
+    *BaseAddress = (UINTN)BaseHypervisorFw;
   
-  return Status;
+    ImageContext.ImageAddress = (PHYSICAL_ADDRESS)(UINTN)BaseHypervisorFw;
+    ImageContext.ImageAddress += ImageContext.SectionAlignment -1 ;
+    ImageContext.ImageAddress &= ~((UINTN)ImageContext.SectionAlignment -1);
+    Status = PeCoffLoaderLoadImage(&ImageContext);
+    ASSERT_EFI_ERROR(Status);
+    Status = PeCoffLoaderRelocateImage(&ImageContext);
+    ASSERT_EFI_ERROR(Status);
+    Status = PeCoffLoaderGetEntryPoint ((VOID *) (UINTN) ImageContext.ImageAddress, (VOID**) HypervisorFwEntryPoint);
+    ASSERT_EFI_ERROR(Status);
+
+    BuildModuleHob (
+      &gZeroGuid,
+      (EFI_PHYSICAL_ADDRESS)(UINTN)BaseHypervisorFw,
+      EFI_PAGES_TO_SIZE(Pages),
+      (EFI_PHYSICAL_ADDRESS)(UINTN)HypervisorFwEntryPoint
+      );
+
+  } else {
+    DEBUG ((DEBUG_ERROR, "Unknown FW Image\n"));
+    CpuDeadLoop();
+  }
 }
 
 /**
@@ -169,17 +392,11 @@ FindDxeCore (
 EFI_STATUS
 EFIAPI
 DxeLoadCore (
-  IN INTN   FvInstance
+  IN  EFI_FIRMWARE_VOLUME_HEADER       *FirmwareVolumePtr
   )
 {
-  EFI_STATUS                                Status;
-  EFI_FV_FILE_INFO                          DxeCoreFileInfo;
-  EFI_PHYSICAL_ADDRESS                      DxeCoreAddress;
-  UINT64                                    DxeCoreSize;
-  EFI_PHYSICAL_ADDRESS                      DxeCoreEntryPoint;
-  EFI_PEI_FILE_HANDLE                       FileHandle;
-  VOID                                      *PeCoffImage;
-
+  UINTN                      DxeCoreEntryPoint;
+  UINTN                      DxeCoreAddress;
 
   //
   // Create Memory Type Information HOB
@@ -190,38 +407,7 @@ DxeLoadCore (
     sizeof(mDefaultMemoryTypeInformation)
     );
 
-  //
-  // Look in all the FVs present and find the DXE Core FileHandle
-  //
-  Status = FindDxeCore (FvInstance, &FileHandle);
-  ASSERT_EFI_ERROR (Status);
-
-  //
-  // Load the DXE Core from a Firmware Volume.
-  //
-  Status = FfsFindSectionData (EFI_SECTION_PE32, FileHandle, &PeCoffImage);
-  if (EFI_ERROR  (Status)) {
-    return Status;
-  }
-
-  Status = LoadPeCoffImage (PeCoffImage, &DxeCoreAddress, &DxeCoreSize, &DxeCoreEntryPoint);
-  ASSERT_EFI_ERROR (Status);
-
-  //
-  // Extract the DxeCore GUID file name.
-  //
-  Status = FfsGetFileInfo (FileHandle, &DxeCoreFileInfo);
-  ASSERT_EFI_ERROR (Status);
-
-  //
-  // Add HOB for the DXE Core
-  //
-  BuildModuleHob (
-    &DxeCoreFileInfo.FileName,
-    DxeCoreAddress,
-    ALIGN_VALUE (DxeCoreSize, EFI_PAGE_SIZE),
-    DxeCoreEntryPoint
-    );
+  FindAndReportEntryPoints(FirmwareVolumePtr, &DxeCoreEntryPoint, &DxeCoreAddress);
 
   DEBUG ((DEBUG_INFO | DEBUG_LOAD, "Loading DXE CORE at 0x%11p EntryPoint=0x%11p\n", 
     (VOID *)(UINTN)DxeCoreAddress, FUNCTION_ENTRY_POINT (DxeCoreEntryPoint)));

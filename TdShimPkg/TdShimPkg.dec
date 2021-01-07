@@ -56,3 +56,7 @@
   gUefiTdShimPkgTokenSpaceGuid.PcdVarsSize|0x0|UINT64|0x20014
   gUefiTdShimPkgTokenSpaceGuid.PcdVarsRawDataOffset|0x0|UINT32|0x20020
   gUefiTdShimPkgTokenSpaceGuid.PcdBfvRawDataOffset|0x0|UINT32|0x20021
+
+  gUefiTdShimPkgTokenSpaceGuid.PcdPayloadBase|0x0|UINT32|0x20022
+  gUefiTdShimPkgTokenSpaceGuid.PcdPayloadSize|0x0|UINT32|0x20023
+  gUefiTdShimPkgTokenSpaceGuid.PcdPayloadRawDataOffset|0x0|UINT32|0x20024
