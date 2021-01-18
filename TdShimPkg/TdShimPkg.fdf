@@ -24,7 +24,7 @@ ErasePolarity = 0
 BlockSize     = $(BLOCK_SIZE)
 NumBlocks     = $(FW_BLOCKS)
 
-!include VarStore.fdf.inc
+#!include VarStore.fdf.inc
 
 $(COMBINED_TDMAILBOX_OFFSET)|$(TDMAILBOX_SIZE)
 gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxBase|gUefiTdShimPkgTokenSpaceGuid.PcdTdMailboxSize
@@ -55,6 +55,7 @@ $(COMBINED_MAINFV_OFFSET)|$(MAINFV_SIZE)
 FV = MAIN
 
 [FV.MAIN]
+FvNameGuid         = 763BED0D-DE9F-48F5-81F1-3E90E1B1A015
 BlockSize          = 0x1000
 FvAlignment        = 16
 ERASE_POLARITY     = 1
@@ -84,6 +85,8 @@ INF  TdShimPkg/TdShimIpl/TdShimIpl.inf
 INF  RuleOverride=RESET_VECTOR TdShimPkg/ResetVector/ResetVector.inf
 
 [FV.PAYLOAD]
+FvForceRebase      = FALSE
+FvNameGuid         = 7CB8BDC9-F8EB-4F34-AAEA-3EE4AF6516A1
 BlockSize          = 0x1000
 FvAlignment        = 16
 ERASE_POLARITY     = 1
