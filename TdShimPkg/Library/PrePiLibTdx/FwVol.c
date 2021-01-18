@@ -287,14 +287,6 @@ FfsProcessSection (
   EFI_STATUS                              Status;
   UINT32                                  SectionLength;
   UINT32                                  ParsedLength;
-  EFI_COMPRESSION_SECTION                 *CompressionSection;
-  EFI_COMPRESSION_SECTION2                *CompressionSection2;
-  UINT32                                  DstBufferSize;
-  VOID                                    *ScratchBuffer;
-  UINT32                                  ScratchBufferSize;
-  VOID                                    *DstBuffer;
-  CHAR8                                   *CompressedData;
-  UINT32                                  CompressedDataLength;
 
 
   *OutputBuffer = NULL;
@@ -314,103 +306,7 @@ FfsProcessSection (
 
       return EFI_SUCCESS;
     } else if ((Section->Type == EFI_SECTION_COMPRESSION) || (Section->Type == EFI_SECTION_GUID_DEFINED)) {
-
-      if (Section->Type == EFI_SECTION_COMPRESSION) {
-        if (IS_SECTION2 (Section)) {
-          CompressionSection2 = (EFI_COMPRESSION_SECTION2 *) Section;
-          SectionLength       = SECTION2_SIZE (Section);
-
-          if (CompressionSection2->CompressionType != EFI_STANDARD_COMPRESSION) {
-            return EFI_UNSUPPORTED;
-          }
-
-          CompressedData = (CHAR8 *) ((EFI_COMPRESSION_SECTION2 *) Section + 1);
-          CompressedDataLength = (UINT32) SectionLength - sizeof (EFI_COMPRESSION_SECTION2);
-        } else {
-          CompressionSection  = (EFI_COMPRESSION_SECTION *) Section;
-          SectionLength       = SECTION_SIZE (Section);
-
-          if (CompressionSection->CompressionType != EFI_STANDARD_COMPRESSION) {
-            return EFI_UNSUPPORTED;
-          }
-
-          CompressedData = (CHAR8 *) ((EFI_COMPRESSION_SECTION *) Section + 1);
-          CompressedDataLength = (UINT32) SectionLength - sizeof (EFI_COMPRESSION_SECTION);
-        }
-
-        Status = UefiDecompressGetInfo (
-                   CompressedData,
-                   CompressedDataLength,
-                   &DstBufferSize,
-                   &ScratchBufferSize
-                   );
-      } else if (Section->Type == EFI_SECTION_GUID_DEFINED) {
-            return EFI_UNSUPPORTED;
-      }
-
-      if (EFI_ERROR (Status)) {
-        //
-        // GetInfo failed
-        //
-        DEBUG ((EFI_D_ERROR, "Decompress GetInfo Failed - %r\n", Status));
-        return EFI_NOT_FOUND;
-      }
-      //
-      // Allocate scratch buffer
-      //
-      ScratchBuffer = (VOID *)(UINTN)AllocatePages (EFI_SIZE_TO_PAGES (ScratchBufferSize));
-      if (ScratchBuffer == NULL) {
-        return EFI_OUT_OF_RESOURCES;
-      }
-      //
-      // Allocate destination buffer, extra one page for adjustment
-      //
-      DstBuffer = (VOID *)(UINTN)AllocatePages (EFI_SIZE_TO_PAGES (DstBufferSize) + 1);
-      if (DstBuffer == NULL) {
-        return EFI_OUT_OF_RESOURCES;
-      }
-      //
-      // DstBuffer still is one section. Adjust DstBuffer offset, skip EFI section header
-      // to make section data at page alignment.
-      //
-      if (IS_SECTION2 (Section))
-        DstBuffer = (UINT8 *)DstBuffer + EFI_PAGE_SIZE - sizeof (EFI_COMMON_SECTION_HEADER2);
-      else
-        DstBuffer = (UINT8 *)DstBuffer + EFI_PAGE_SIZE - sizeof (EFI_COMMON_SECTION_HEADER);
-      //
-      // Call decompress function
-      //
-      if (Section->Type == EFI_SECTION_COMPRESSION) {
-        if (IS_SECTION2 (Section)) {
-          CompressedData = (CHAR8 *) ((EFI_COMPRESSION_SECTION2 *) Section + 1);
-        }
-        else {
-          CompressedData = (CHAR8 *) ((EFI_COMPRESSION_SECTION *) Section + 1);
-        }
-
-        Status = UefiDecompress (
-                    CompressedData,
-                    DstBuffer,
-                    ScratchBuffer
-                    );
-      } else if (Section->Type == EFI_SECTION_GUID_DEFINED) {
-            return EFI_UNSUPPORTED;
-      }
-
-      if (EFI_ERROR (Status)) {
-        //
-        // Decompress failed
-        //
-        DEBUG ((EFI_D_ERROR, "Decompress Failed - %r\n", Status));
-        return EFI_NOT_FOUND;
-      } else {
-        return FfsProcessSection (
-                SectionType,
-                DstBuffer,
-                DstBufferSize,
-                OutputBuffer
-                );
-       }
+      return EFI_UNSUPPORTED;
     }
 
     if (IS_SECTION2 (Section)) {

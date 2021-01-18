@@ -40,7 +40,6 @@
   BaseLib
   DebugLib
   BaseMemoryLib
-  UefiDecompressLib
   PeCoffLib
   CacheMaintenanceLib
   PrintLib

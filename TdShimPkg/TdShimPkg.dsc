@@ -116,7 +116,6 @@ DEFINE CRYPT_LIB = MBEDTLS
   CpuLib|MdePkg/Library/BaseCpuLib/BaseCpuLib.inf
   PeCoffLib|MdePkg/Library/BasePeCoffLib/BasePeCoffLib.inf
   CacheMaintenanceLib|MdePkg/Library/BaseCacheMaintenanceLib/BaseCacheMaintenanceLib.inf
-  UefiDecompressLib|MdePkg/Library/BaseUefiDecompressLib/BaseUefiDecompressLib.inf
   SortLib|MdeModulePkg/Library/UefiSortLib/UefiSortLib.inf
   PeCoffGetEntryPointLib|MdePkg/Library/BasePeCoffGetEntryPointLib/BasePeCoffGetEntryPointLib.inf
   IoLib|TdShimPkg/Library/BaseIoLibIntrinsicTdx/BaseIoLibIntrinsicTdx.inf

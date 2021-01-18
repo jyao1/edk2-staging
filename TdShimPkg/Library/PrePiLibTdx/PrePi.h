@@ -17,7 +17,6 @@
 #include <Library/PcdLib.h>
 #include <Library/DebugLib.h>
 #include <Library/BaseMemoryLib.h>
-#include <Library/UefiDecompressLib.h>
 #include <Library/PeCoffLib.h>
 #include <Library/CacheMaintenanceLib.h>
 #include <Library/MemoryAllocationLib.h>
