@@ -18,6 +18,7 @@
 #include <Library/MemoryAllocationLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiDriverEntryPoint.h>
+#include <Library/TlsLib.h>
 #include <Guid/CryptoIndicatorTable.h>
 #include <Guid/ImageAuthentication.h>
 
@@ -229,11 +230,28 @@ CryptoIndicatorTableDxeEntryPoint (
   UINT16                       SecBootAuthEntrySize;
   UINT16                       ImageRevocEntrySize;
   UINT16                       ServicingAuthEntrySize;
+  UINT16                       TlsVersionEntrySize;
+  UINT16                       TlsCipherEntrySize;
+  UINT16                       TlsGroupEntrySize;
+  UINT16                       TlsSigAlgEntrySize;
   UINTN                        AllOidLen;
   UINTN                        SecBootAuthDataSize;
   UINTN                        ImageRevocDataSize;
   UINTN                        ServicingAuthDataSize;
   CONST CHAR8                  *AllOids;
+  UINT16                       *TlsVersions;
+  UINT16                       *TlsCipherSuites;
+  UINT16                       *TlsGroups;
+  UINT16                       *TlsSigAlgs;
+  UINTN                        TlsVersionCount;
+  UINTN                        TlsCipherCount;
+  UINTN                        TlsGroupCount;
+  UINTN                        TlsSigAlgCount;
+  UINTN                        TlsVersionDataSize;
+  UINTN                        TlsCipherDataSize;
+  UINTN                        TlsGroupDataSize;
+  UINTN                        TlsSigAlgDataSize;
+  UINT16                       NumberOfEntries;
 
   //
   // Query the complete set of supported signing OIDs from the crypto library.
@@ -272,18 +290,183 @@ CryptoIndicatorTableDxeEntryPoint (
   ServicingAuthEntrySize = EcitEntrySize (ServicingAuthDataSize);
 
   //
-  // Total table size: header + 5 entries.
+  // TLS Version entry: query supported TLS protocol versions.
   //
-  TableSize = sizeof (EFI_CRYPTO_INDICATOR_TABLE) +
-              OidEntrySize +
-              SecBootAuthEntrySize +
-              ImageRevocEntrySize +
-              ServicingAuthEntrySize +
-              OidEntrySize;
+  TlsVersions       = NULL;
+  TlsVersionCount   = 0;
+  TlsVersionEntrySize = 0;
+  TlsVersionDataSize  = 0;
+
+  Status = TlsGetSupportedVersions (NULL, &TlsVersionCount);
+  if (!EFI_ERROR (Status) && (TlsVersionCount > 0)) {
+    TlsVersionDataSize = TlsVersionCount * sizeof (UINT16);
+    TlsVersions        = AllocatePool (TlsVersionDataSize);
+    if (TlsVersions != NULL) {
+      Status = TlsGetSupportedVersions (TlsVersions, &TlsVersionCount);
+      if (EFI_ERROR (Status)) {
+        FreePool (TlsVersions);
+        TlsVersions      = NULL;
+        TlsVersionCount   = 0;
+        TlsVersionDataSize = 0;
+      } else {
+        TlsVersionDataSize  = TlsVersionCount * sizeof (UINT16);
+        //
+        // Entry data = UINT16 Count + UINT16 Versions[]
+        //
+        TlsVersionEntrySize = EcitEntrySize (sizeof (UINT16) + TlsVersionDataSize);
+      }
+    } else {
+      TlsVersionCount   = 0;
+      TlsVersionDataSize = 0;
+    }
+  }
+
+  //
+  // TLS Cipher Suite entry: query supported cipher suites.
+  //
+  TlsCipherSuites    = NULL;
+  TlsCipherCount     = 0;
+  TlsCipherEntrySize = 0;
+  TlsCipherDataSize  = 0;
+
+  Status = TlsGetSupportedCipherSuites (NULL, &TlsCipherCount);
+  if (!EFI_ERROR (Status) && (TlsCipherCount > 0)) {
+    TlsCipherDataSize = TlsCipherCount * sizeof (UINT16);
+    TlsCipherSuites   = AllocatePool (TlsCipherDataSize);
+    if (TlsCipherSuites != NULL) {
+      Status = TlsGetSupportedCipherSuites (TlsCipherSuites, &TlsCipherCount);
+      if (EFI_ERROR (Status)) {
+        FreePool (TlsCipherSuites);
+        TlsCipherSuites   = NULL;
+        TlsCipherCount     = 0;
+        TlsCipherDataSize  = 0;
+      } else {
+        TlsCipherDataSize  = TlsCipherCount * sizeof (UINT16);
+        //
+        // Entry data = UINT16 Count + UINT16 CipherSuites[]
+        //
+        TlsCipherEntrySize = EcitEntrySize (sizeof (UINT16) + TlsCipherDataSize);
+      }
+    } else {
+      TlsCipherCount    = 0;
+      TlsCipherDataSize = 0;
+    }
+  }
+
+  //
+  // TLS Group entry: query supported key exchange groups.
+  //
+  TlsGroups        = NULL;
+  TlsGroupCount    = 0;
+  TlsGroupEntrySize = 0;
+  TlsGroupDataSize  = 0;
+
+  Status = TlsGetSupportedGroups (NULL, &TlsGroupCount);
+  if (!EFI_ERROR (Status) && (TlsGroupCount > 0)) {
+    TlsGroupDataSize = TlsGroupCount * sizeof (UINT16);
+    TlsGroups        = AllocatePool (TlsGroupDataSize);
+    if (TlsGroups != NULL) {
+      Status = TlsGetSupportedGroups (TlsGroups, &TlsGroupCount);
+      if (EFI_ERROR (Status)) {
+        FreePool (TlsGroups);
+        TlsGroups        = NULL;
+        TlsGroupCount    = 0;
+        TlsGroupDataSize = 0;
+      } else {
+        TlsGroupDataSize  = TlsGroupCount * sizeof (UINT16);
+        //
+        // Entry data = UINT16 Count + UINT16 Groups[]
+        //
+        TlsGroupEntrySize = EcitEntrySize (sizeof (UINT16) + TlsGroupDataSize);
+      }
+    } else {
+      TlsGroupCount    = 0;
+      TlsGroupDataSize = 0;
+    }
+  }
+
+  //
+  // TLS Signature Algorithm entry: query supported signature algorithms.
+  //
+  TlsSigAlgs        = NULL;
+  TlsSigAlgCount    = 0;
+  TlsSigAlgEntrySize = 0;
+  TlsSigAlgDataSize  = 0;
+
+  Status = TlsGetSupportedSignatureSchemes (NULL, &TlsSigAlgCount);
+  if (!EFI_ERROR (Status) && (TlsSigAlgCount > 0)) {
+    TlsSigAlgDataSize = TlsSigAlgCount * sizeof (UINT16);
+    TlsSigAlgs        = AllocatePool (TlsSigAlgDataSize);
+    if (TlsSigAlgs != NULL) {
+      Status = TlsGetSupportedSignatureSchemes (TlsSigAlgs, &TlsSigAlgCount);
+      if (EFI_ERROR (Status)) {
+        FreePool (TlsSigAlgs);
+        TlsSigAlgs        = NULL;
+        TlsSigAlgCount    = 0;
+        TlsSigAlgDataSize = 0;
+      } else {
+        TlsSigAlgDataSize  = TlsSigAlgCount * sizeof (UINT16);
+        //
+        // Entry data = UINT16 Count + UINT16 SigAlgs[]
+        //
+        TlsSigAlgEntrySize = EcitEntrySize (sizeof (UINT16) + TlsSigAlgDataSize);
+      }
+    } else {
+      TlsSigAlgCount    = 0;
+      TlsSigAlgDataSize = 0;
+    }
+  }
+
+  //
+  // Total table size: header + 5 base entries + optional TLS entries.
+  //
+  NumberOfEntries = 5;
+  TableSize       = sizeof (EFI_CRYPTO_INDICATOR_TABLE) +
+                    OidEntrySize +
+                    SecBootAuthEntrySize +
+                    ImageRevocEntrySize +
+                    ServicingAuthEntrySize +
+                    OidEntrySize;
+
+  if (TlsVersionEntrySize > 0) {
+    TableSize += TlsVersionEntrySize;
+    NumberOfEntries++;
+  }
+
+  if (TlsCipherEntrySize > 0) {
+    TableSize += TlsCipherEntrySize;
+    NumberOfEntries++;
+  }
+
+  if (TlsGroupEntrySize > 0) {
+    TableSize += TlsGroupEntrySize;
+    NumberOfEntries++;
+  }
+
+  if (TlsSigAlgEntrySize > 0) {
+    TableSize += TlsSigAlgEntrySize;
+    NumberOfEntries++;
+  }
 
   Table = AllocateZeroPool (TableSize);
   if (Table == NULL) {
     DEBUG ((DEBUG_ERROR, "CryptoIndicatorTableDxe: Failed to allocate table\n"));
+    if (TlsVersions != NULL) {
+      FreePool (TlsVersions);
+    }
+
+    if (TlsCipherSuites != NULL) {
+      FreePool (TlsCipherSuites);
+    }
+
+    if (TlsGroups != NULL) {
+      FreePool (TlsGroups);
+    }
+
+    if (TlsSigAlgs != NULL) {
+      FreePool (TlsSigAlgs);
+    }
+
     return EFI_OUT_OF_RESOURCES;
   }
 
@@ -291,7 +474,7 @@ CryptoIndicatorTableDxeEntryPoint (
   // Fill table header.
   //
   Table->Version         = EFI_CRYPTO_INDICATOR_TABLE_VERSION;
-  Table->NumberOfEntries = 5;
+  Table->NumberOfEntries = NumberOfEntries;
   Table->Reserved        = 0;
 
   Buffer = (UINT8 *)Table + sizeof (EFI_CRYPTO_INDICATOR_TABLE);
@@ -364,6 +547,103 @@ CryptoIndicatorTableDxeEntryPoint (
     AllOidLen,
     AllOids
     );
+  Buffer += OidEntrySize;
+
+  //
+  // Entry 6 (optional): TLS Version
+  // Data format: UINT16 Count + UINT16 Versions[]
+  //
+  if ((TlsVersions != NULL) && (TlsVersionEntrySize > 0)) {
+    UINT16  VersionCount16;
+    UINT8   *DataPtr;
+
+    Entry = (EFI_CRYPTO_INDICATOR_ENTRY *)Buffer;
+    CopyGuid (&Entry->FeatureIdentifier, &gEfiEcitFeatureTlsVersionGuid);
+    Entry->EntryLength = TlsVersionEntrySize;
+    ZeroMem (Entry->Reserved, sizeof (Entry->Reserved));
+
+    DataPtr = Buffer + sizeof (EFI_CRYPTO_INDICATOR_ENTRY);
+    VersionCount16 = (UINT16)TlsVersionCount;
+    CopyMem (DataPtr, &VersionCount16, sizeof (UINT16));
+    CopyMem (DataPtr + sizeof (UINT16), TlsVersions, TlsVersionDataSize);
+    Buffer += TlsVersionEntrySize;
+  }
+
+  //
+  // Entry 7 (optional): TLS Cipher Suite
+  // Data format: UINT16 Count + UINT16 CipherSuites[]
+  //
+  if ((TlsCipherSuites != NULL) && (TlsCipherEntrySize > 0)) {
+    UINT16  CipherCount16;
+    UINT8   *DataPtr;
+
+    Entry = (EFI_CRYPTO_INDICATOR_ENTRY *)Buffer;
+    CopyGuid (&Entry->FeatureIdentifier, &gEfiEcitFeatureTlsCipherSuiteGuid);
+    Entry->EntryLength = TlsCipherEntrySize;
+    ZeroMem (Entry->Reserved, sizeof (Entry->Reserved));
+
+    DataPtr = Buffer + sizeof (EFI_CRYPTO_INDICATOR_ENTRY);
+    CipherCount16 = (UINT16)TlsCipherCount;
+    CopyMem (DataPtr, &CipherCount16, sizeof (UINT16));
+    CopyMem (DataPtr + sizeof (UINT16), TlsCipherSuites, TlsCipherDataSize);
+    Buffer += TlsCipherEntrySize;
+  }
+
+  //
+  // Entry 8 (optional): TLS Key Exchange Group
+  // Data format: UINT16 Count + UINT16 Groups[]
+  //
+  if ((TlsGroups != NULL) && (TlsGroupEntrySize > 0)) {
+    UINT16  GroupCount16;
+    UINT8   *DataPtr;
+
+    Entry = (EFI_CRYPTO_INDICATOR_ENTRY *)Buffer;
+    CopyGuid (&Entry->FeatureIdentifier, &gEfiEcitFeatureTlsGroupGuid);
+    Entry->EntryLength = TlsGroupEntrySize;
+    ZeroMem (Entry->Reserved, sizeof (Entry->Reserved));
+
+    DataPtr = Buffer + sizeof (EFI_CRYPTO_INDICATOR_ENTRY);
+    GroupCount16 = (UINT16)TlsGroupCount;
+    CopyMem (DataPtr, &GroupCount16, sizeof (UINT16));
+    CopyMem (DataPtr + sizeof (UINT16), TlsGroups, TlsGroupDataSize);
+    Buffer += TlsGroupEntrySize;
+  }
+
+  //
+  // Entry 9 (optional): TLS Signature Scheme
+  // Data format: UINT16 Count + UINT16 SigAlgs[]
+  //
+  if ((TlsSigAlgs != NULL) && (TlsSigAlgEntrySize > 0)) {
+    UINT16  SigAlgCount16;
+    UINT8   *DataPtr;
+
+    Entry = (EFI_CRYPTO_INDICATOR_ENTRY *)Buffer;
+    CopyGuid (&Entry->FeatureIdentifier, &gEfiEcitFeatureTlsSignatureSchemeGuid);
+    Entry->EntryLength = TlsSigAlgEntrySize;
+    ZeroMem (Entry->Reserved, sizeof (Entry->Reserved));
+
+    DataPtr = Buffer + sizeof (EFI_CRYPTO_INDICATOR_ENTRY);
+    SigAlgCount16 = (UINT16)TlsSigAlgCount;
+    CopyMem (DataPtr, &SigAlgCount16, sizeof (UINT16));
+    CopyMem (DataPtr + sizeof (UINT16), TlsSigAlgs, TlsSigAlgDataSize);
+    Buffer += TlsSigAlgEntrySize;
+  }
+
+  if (TlsVersions != NULL) {
+    FreePool (TlsVersions);
+  }
+
+  if (TlsCipherSuites != NULL) {
+    FreePool (TlsCipherSuites);
+  }
+
+  if (TlsGroups != NULL) {
+    FreePool (TlsGroups);
+  }
+
+  if (TlsSigAlgs != NULL) {
+    FreePool (TlsSigAlgs);
+  }
 
   //
   // Install the table as an EFI Configuration Table.

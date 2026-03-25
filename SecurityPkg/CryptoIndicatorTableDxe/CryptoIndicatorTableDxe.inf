@@ -37,6 +37,7 @@
   BaseMemoryLib
   DebugLib
   MemoryAllocationLib
+  TlsLib
   UefiBootServicesTableLib
   UefiDriverEntryPoint
 
@@ -47,6 +48,10 @@
   gEfiEcitFeatureImageRevocationGuid         ## CONSUMES  ## GUID  # Feature identifier
   gEfiEcitFeatureSecureBootServicingAuthorizationGuid ## CONSUMES  ## GUID  # Feature identifier
   gEfiEcitFeatureAuthenticatedVariableGuid   ## CONSUMES  ## GUID  # Feature identifier
+  gEfiEcitFeatureTlsVersionGuid              ## CONSUMES  ## GUID  # Feature identifier
+  gEfiEcitFeatureTlsCipherSuiteGuid          ## CONSUMES  ## GUID  # Feature identifier
+  gEfiEcitFeatureTlsGroupGuid                ## CONSUMES  ## GUID  # Feature identifier
+  gEfiEcitFeatureTlsSignatureSchemeGuid       ## CONSUMES  ## GUID  # Feature identifier
   gEfiCertX509Guid                           ## CONSUMES  ## GUID  # Signature list type
   gEfiCertSha256Guid                         ## CONSUMES  ## GUID  # Signature list type
   gEfiCertSha384Guid                         ## CONSUMES  ## GUID  # Signature list type
