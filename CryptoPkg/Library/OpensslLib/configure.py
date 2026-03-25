@@ -85,7 +85,6 @@ def openssl_configure(openssldir, target, ec = True):
         'no-static-engine',
         'no-stdio',
         'no-threads',
-        'no-tls1_3',
         'no-ts',
         'no-ui-console',
         'no-whirlpool',

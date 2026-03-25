@@ -285,12 +285,12 @@ TlsGetSupportedVersions (
 {
   //
   // Supported TLS versions in the current OpenSSL build.
-  // TLS 1.3 (0x0304) is excluded because OpenSSL is compiled with no-tls1_3.
   //
   STATIC CONST UINT16  SupportedVersions[] = {
     0x0301,  // TLS 1.0
     0x0302,  // TLS 1.1
     0x0303,  // TLS 1.2
+    0x0304,  // TLS 1.3
   };
 
   UINTN  Count;
