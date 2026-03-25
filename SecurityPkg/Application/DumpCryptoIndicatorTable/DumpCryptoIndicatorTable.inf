@@ -45,6 +45,8 @@
   gEfiEcitFeatureAuthenticatedVariableGuid   ## CONSUMES  ## GUID  # Feature identifier
   gEfiEcitFeatureSystemFirmwareUpdateGuid    ## CONSUMES  ## GUID  # Feature identifier
   gEfiEcitFeatureEsrtFirmwareUpdateGuid      ## CONSUMES  ## GUID  # Feature identifier
+  gEfiEcitFeatureTlsVersionGuid             ## CONSUMES  ## GUID  # Feature identifier
+  gEfiEcitFeatureTlsCipherSuiteGuid         ## CONSUMES  ## GUID  # Feature identifier
   gEfiCertX509Guid                           ## CONSUMES  ## GUID  # Signature type
   gEfiCertSha256Guid                         ## CONSUMES  ## GUID  # Signature type
   gEfiCertSha384Guid                         ## CONSUMES  ## GUID  # Signature type

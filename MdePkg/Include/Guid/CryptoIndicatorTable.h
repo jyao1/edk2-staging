@@ -109,6 +109,34 @@
     { 0xaa, 0xad, 0x89, 0x87, 0x16, 0x4e, 0xad, 0x4c } \
   }
 
+///
+/// TLS Version feature - indicates the TLS protocol versions supported
+/// by the firmware TLS implementation.
+/// EntryData format: UINT16 Count followed by Count UINT16 TLS version values
+/// (e.g. 0x0301=TLS1.0, 0x0302=TLS1.1, 0x0303=TLS1.2, 0x0304=TLS1.3).
+///
+/// {a7c3e2d1-4b5f-4892-9d6e-1f3a8c7b5d02}
+///
+#define EFI_ECIT_FEATURE_TLS_VERSION_GUID \
+  { \
+    0xa7c3e2d1, 0x4b5f, 0x4892, \
+    { 0x9d, 0x6e, 0x1f, 0x3a, 0x8c, 0x7b, 0x5d, 0x02 } \
+  }
+
+///
+/// TLS Cipher Suite feature - indicates the TLS cipher suites supported
+/// by the firmware TLS implementation.
+/// EntryData format: UINT16 Count followed by Count UINT16 IANA cipher suite
+/// identifiers (as defined in TLS Cipher Suite Registry).
+///
+/// {b8d4f3e2-5c6a-4793-ae7f-2f4b9d8c6e13}
+///
+#define EFI_ECIT_FEATURE_TLS_CIPHER_SUITE_GUID \
+  { \
+    0xb8d4f3e2, 0x5c6a, 0x4793, \
+    { 0xae, 0x7f, 0x2f, 0x4b, 0x9d, 0x8c, 0x6e, 0x13 } \
+  }
+
 #pragma pack(1)
 
 ///
@@ -180,3 +208,5 @@ extern EFI_GUID  gEfiEcitFeatureImageRevocationGuid;
 extern EFI_GUID  gEfiEcitFeatureAuthenticatedVariableGuid;
 extern EFI_GUID  gEfiEcitFeatureSystemFirmwareUpdateGuid;
 extern EFI_GUID  gEfiEcitFeatureEsrtFirmwareUpdateGuid;
+extern EFI_GUID  gEfiEcitFeatureTlsVersionGuid;
+extern EFI_GUID  gEfiEcitFeatureTlsCipherSuiteGuid;
