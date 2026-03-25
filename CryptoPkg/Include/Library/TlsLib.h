@@ -969,4 +969,64 @@ TlsGetExportKey (
   IN     UINTN       KeyBufferLen
   );
 
+/**
+  Get the list of TLS protocol versions supported by the TLS library.
+
+  This function returns the TLS protocol version values supported by the
+  underlying TLS implementation. Each version is a UINT16 value encoded as
+  (MajorVersion << 8 | MinorVersion), e.g. 0x0301 for TLS 1.0, 0x0303 for
+  TLS 1.2.
+
+  If Versions is NULL, only the count of supported versions is returned
+  in VersionCount.
+
+  @param[out]     Versions      Pointer to caller-allocated buffer for UINT16
+                                version values. May be NULL to query count only.
+  @param[in,out]  VersionCount  On input, the maximum number of entries the
+                                Versions buffer can hold. On output, the actual
+                                number of supported versions.
+
+  @retval EFI_SUCCESS           The version list was returned successfully.
+  @retval EFI_INVALID_PARAMETER VersionCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  The Versions buffer is too small. VersionCount
+                                is updated with the required count.
+  @retval EFI_UNSUPPORTED       TLS is not supported by this implementation.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedVersions (
+  OUT    UINT16  *Versions      OPTIONAL,
+  IN OUT UINTN   *VersionCount
+  );
+
+/**
+  Get the list of TLS cipher suites supported by the TLS library.
+
+  This function returns the IANA cipher suite identifiers for all cipher
+  suites available in the underlying TLS implementation at the default
+  security level.
+
+  If CipherSuites is NULL, only the count of supported cipher suites is
+  returned in CipherCount.
+
+  @param[out]     CipherSuites  Pointer to caller-allocated buffer for UINT16
+                                IANA cipher suite IDs. May be NULL to query
+                                count only.
+  @param[in,out]  CipherCount   On input, the maximum number of entries the
+                                CipherSuites buffer can hold. On output, the
+                                actual number of supported cipher suites.
+
+  @retval EFI_SUCCESS           The cipher suite list was returned successfully.
+  @retval EFI_INVALID_PARAMETER CipherCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  The CipherSuites buffer is too small. CipherCount
+                                is updated with the required count.
+  @retval EFI_UNSUPPORTED       TLS is not supported by this implementation.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedCipherSuites (
+  OUT    UINT16  *CipherSuites  OPTIONAL,
+  IN OUT UINTN   *CipherCount
+  );
+
 #endif // __TLS_LIB_H__

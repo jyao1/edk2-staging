@@ -261,3 +261,141 @@ TlsNew (
     );
   return (VOID *)TlsConn;
 }
+
+/**
+  Get the list of TLS protocol versions supported by the TLS library.
+
+  The supported versions are determined by the compile-time OpenSSL
+  configuration. Currently TLS 1.0, 1.1, and 1.2 are supported
+  (TLS 1.3 is disabled via no-tls1_3 in the OpenSSL build).
+
+  @param[out]     Versions      Buffer for UINT16 version values.
+  @param[in,out]  VersionCount  On input, max entries. On output, actual count.
+
+  @retval EFI_SUCCESS           Version list returned successfully.
+  @retval EFI_INVALID_PARAMETER VersionCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  Buffer too small, VersionCount updated.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedVersions (
+  OUT    UINT16  *Versions      OPTIONAL,
+  IN OUT UINTN   *VersionCount
+  )
+{
+  //
+  // Supported TLS versions in the current OpenSSL build.
+  // TLS 1.3 (0x0304) is excluded because OpenSSL is compiled with no-tls1_3.
+  //
+  STATIC CONST UINT16  SupportedVersions[] = {
+    0x0301,  // TLS 1.0
+    0x0302,  // TLS 1.1
+    0x0303,  // TLS 1.2
+  };
+
+  UINTN  Count;
+
+  if (VersionCount == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Count = ARRAY_SIZE (SupportedVersions);
+
+  if ((Versions == NULL) || (*VersionCount < Count)) {
+    *VersionCount = Count;
+    if (Versions == NULL) {
+      return EFI_SUCCESS;
+    }
+
+    return EFI_BUFFER_TOO_SMALL;
+  }
+
+  CopyMem (Versions, SupportedVersions, Count * sizeof (UINT16));
+  *VersionCount = Count;
+  return EFI_SUCCESS;
+}
+
+/**
+  Get the list of TLS cipher suites supported by the TLS library.
+
+  Creates a temporary SSL_CTX and SSL object to query the default cipher
+  list at security level 3 (matching TlsNew()), then extracts the IANA
+  cipher suite identifiers.
+
+  @param[out]     CipherSuites  Buffer for UINT16 IANA cipher suite IDs.
+  @param[in,out]  CipherCount   On input, max entries. On output, actual count.
+
+  @retval EFI_SUCCESS           Cipher suite list returned successfully.
+  @retval EFI_INVALID_PARAMETER CipherCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  Buffer too small, CipherCount updated.
+  @retval EFI_UNSUPPORTED       Failed to create TLS context.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedCipherSuites (
+  OUT    UINT16  *CipherSuites  OPTIONAL,
+  IN OUT UINTN   *CipherCount
+  )
+{
+  SSL_CTX             *Ctx;
+  SSL                 *Ssl;
+  STACK_OF (SSL_CIPHER) *Ciphers;
+  CONST SSL_CIPHER    *Cipher;
+  UINTN               Count;
+  UINTN               Index;
+
+  if (CipherCount == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  //
+  // Create a temporary SSL_CTX with TLS 1.0 as minimum (same as production).
+  //
+  Ctx = SSL_CTX_new (SSLv23_client_method ());
+  if (Ctx == NULL) {
+    return EFI_UNSUPPORTED;
+  }
+
+  SSL_CTX_set_options (Ctx, SSL_OP_NO_SSLv3);
+  SSL_CTX_set_min_proto_version (Ctx, TLS1_VERSION);
+
+  Ssl = SSL_new (Ctx);
+  if (Ssl == NULL) {
+    SSL_CTX_free (Ctx);
+    return EFI_UNSUPPORTED;
+  }
+
+  //
+  // Set security level 3 to match what TlsNew() uses in production.
+  //
+  SSL_set_security_level (Ssl, 3);
+
+  //
+  // Get the cipher list after security level filtering.
+  //
+  Ciphers = SSL_get_ciphers (Ssl);
+  Count   = (Ciphers != NULL) ? (UINTN)sk_SSL_CIPHER_num (Ciphers) : 0;
+
+  if ((CipherSuites == NULL) || (*CipherCount < Count)) {
+    *CipherCount = Count;
+    SSL_free (Ssl);
+    SSL_CTX_free (Ctx);
+    if (CipherSuites == NULL) {
+      return EFI_SUCCESS;
+    }
+
+    return EFI_BUFFER_TOO_SMALL;
+  }
+
+  for (Index = 0; Index < Count; Index++) {
+    Cipher              = sk_SSL_CIPHER_value (Ciphers, (int)Index);
+    CipherSuites[Index] = (UINT16)SSL_CIPHER_get_protocol_id (Cipher);
+  }
+
+  *CipherCount = Count;
+
+  SSL_free (Ssl);
+  SSL_CTX_free (Ctx);
+
+  return EFI_SUCCESS;
+}

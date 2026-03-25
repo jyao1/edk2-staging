@@ -5577,6 +5577,42 @@ CryptoServiceTlsGetExportKey (
 }
 
 /**
+  Get the list of TLS protocol versions supported by the TLS library.
+**/
+EFI_STATUS
+EFIAPI
+CryptoServiceTlsGetSupportedVersions (
+  OUT    UINT16  *Versions      OPTIONAL,
+  IN OUT UINTN   *VersionCount
+  )
+{
+  return CALL_BASECRYPTLIB (
+           TlsGet.Services.SupportedVersions,
+           TlsGetSupportedVersions,
+           (Versions, VersionCount),
+           EFI_UNSUPPORTED
+           );
+}
+
+/**
+  Get the list of TLS cipher suites supported by the TLS library.
+**/
+EFI_STATUS
+EFIAPI
+CryptoServiceTlsGetSupportedCipherSuites (
+  OUT    UINT16  *CipherSuites  OPTIONAL,
+  IN OUT UINTN   *CipherCount
+  )
+{
+  return CALL_BASECRYPTLIB (
+           TlsGet.Services.SupportedCipherSuites,
+           TlsGetSupportedCipherSuites,
+           (CipherSuites, CipherCount),
+           EFI_UNSUPPORTED
+           );
+}
+
+/**
   Carries out the RSA-SSA signature generation with EMSA-PSS encoding scheme.
 
   This function carries out the RSA-SSA signature generation with EMSA-PSS encoding scheme defined in
@@ -7188,4 +7224,7 @@ const EDKII_CRYPTO_PROTOCOL  mEdkiiCrypto = {
   CryptoServiceTlsSetSecurityLevel,
   /// Pkcs (Continued)
   CryptoServicePkcs7GetVerifyOidList,
+  /// TLS Get (Continued)
+  CryptoServiceTlsGetSupportedVersions,
+  CryptoServiceTlsGetSupportedCipherSuites,
 };
