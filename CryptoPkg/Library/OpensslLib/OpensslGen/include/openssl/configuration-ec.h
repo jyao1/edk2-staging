@@ -319,9 +319,6 @@ extern "C" {
 # ifndef OPENSSL_NO_TLS_DEPRECATED_EC
 #  define OPENSSL_NO_TLS_DEPRECATED_EC
 # endif
-# ifndef OPENSSL_NO_TLS1_3
-#  define OPENSSL_NO_TLS1_3
-# endif
 # ifndef OPENSSL_NO_TRACE
 #  define OPENSSL_NO_TRACE
 # endif
