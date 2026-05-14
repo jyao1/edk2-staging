@@ -54,6 +54,14 @@
     <LibraryClasses>
       OpensslLib|CryptoPkg/Library/OpensslLib/OpensslLibFullAccel.inf
   }
+  CryptoPkg/Test/UnitTest/Library/TlsLib/TestTlsLibHost.inf {
+    <LibraryClasses>
+      OpensslLib|CryptoPkg/Library/OpensslLib/OpensslLibFullSrvr.inf
+      TlsLib|CryptoPkg/Library/TlsLib/TlsLib.inf
+      IntrinsicLib|CryptoPkg/Library/IntrinsicLib/IntrinsicLibNull.inf
+    <BuildOptions>
+      MSFT:*_*_*_DLINK_FLAGS = /FORCE:MULTIPLE
+  }
 !endif
 
 !if $(CRYPTO_TEST_TYPE) IN "MBEDTLS"
