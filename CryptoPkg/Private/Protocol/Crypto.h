@@ -4063,6 +4063,72 @@ EFI_STATUS
   );
 
 /**
+  Set the ciphers list to be used by the TLS object using OpenSSL cipher string format.
+
+  @param[in]  Tls           Pointer to a TLS object.
+  @param[in]  CipherString  Pointer to the cipher string in OpenSSL format.
+
+  @retval  EFI_SUCCESS           The cipher string was set successfully.
+  @retval  EFI_INVALID_PARAMETER The parameter is invalid.
+  @retval  EFI_UNSUPPORTED       No supported TLS cipher was found.
+**/
+typedef
+EFI_STATUS
+(EFIAPI *EDKII_CRYPTO_TLS_SET_CIPHER_STRING)(
+  IN     VOID                     *Tls,
+  IN     CONST CHAR8              *CipherString
+  );
+
+/**
+  Set the TLS 1.3 ciphersuites to be used by the TLS object.
+
+  @param[in]  Tls           Pointer to a TLS object.
+  @param[in]  CipherSuites  Pointer to the TLS 1.3 ciphersuite string.
+
+  @retval  EFI_SUCCESS           The ciphersuites were set successfully.
+  @retval  EFI_INVALID_PARAMETER The parameter is invalid.
+  @retval  EFI_UNSUPPORTED       No supported TLS 1.3 ciphersuite was found.
+**/
+typedef
+EFI_STATUS
+(EFIAPI *EDKII_CRYPTO_TLS_SET_CIPHER_SUITES)(
+  IN     VOID                     *Tls,
+  IN     CONST CHAR8              *CipherSuites
+  );
+
+/**
+  Set the key exchange groups to be used by the TLS object.
+
+  @param[in]  Tls     Pointer to a TLS object.
+  @param[in]  Groups  Pointer to the groups string in OpenSSL format.
+
+  @retval  EFI_SUCCESS           The groups were set successfully.
+  @retval  EFI_INVALID_PARAMETER The parameter is invalid.
+  @retval  EFI_UNSUPPORTED       No supported group was found.
+**/
+typedef
+EFI_STATUS
+(EFIAPI *EDKII_CRYPTO_TLS_SET_GROUPS)(
+  IN     VOID                     *Tls,
+  IN     CONST CHAR8              *Groups
+  );
+
+/**
+  Skip certificate time validation for the TLS connection.
+
+  @param[in]  Tls    Pointer to the TLS object.
+
+  @retval  EFI_SUCCESS           The flag was set successfully.
+  @retval  EFI_INVALID_PARAMETER The parameter is invalid.
+  @retval  EFI_ABORTED           Failed to get the certificate store.
+**/
+typedef
+EFI_STATUS
+(EFIAPI *EDKII_CRYPTO_TLS_SET_NO_CHECK_TIME)(
+  IN     VOID                     *Tls
+  );
+
+/**
   Gets the protocol version used by the specified TLS connection.
 
   This function returns the protocol version used by the specified TLS
@@ -5824,6 +5890,10 @@ struct _EDKII_CRYPTO_PROTOCOL {
   /// TLS Set (Continued)
   EDKII_CRYPTO_TLS_SET_SERVER_NAME                    TlsSetServerName;
   EDKII_CRYPTO_TLS_SET_SECURITY_LEVEL                 TlsSetSecurityLevel;
+  EDKII_CRYPTO_TLS_SET_CIPHER_STRING                  TlsSetCipherString;
+  EDKII_CRYPTO_TLS_SET_CIPHER_SUITES                  TlsSetCipherSuites;
+  EDKII_CRYPTO_TLS_SET_GROUPS                         TlsSetGroups;
+  EDKII_CRYPTO_TLS_SET_NO_CHECK_TIME                  TlsSetNoCheckTime;
   /// Pkcs (Continued)
   EDKII_CRYPTO_PKCS7_GET_SIGNERINFO_NUM               Pkcs7GetSignerInfoNum;
   EDKII_CRYPTO_PKCS7_GET_VERIFY_OID_LIST              Pkcs7GetVerifyOidList;

@@ -4509,6 +4509,57 @@ TlsSetSecurityLevel (
 }
 
 /**
+  Set the ciphers list to be used by the TLS object using OpenSSL cipher string format.
+**/
+EFI_STATUS
+EFIAPI
+TlsSetCipherString (
+  IN     VOID         *Tls,
+  IN     CONST CHAR8  *CipherString
+  )
+{
+  CALL_CRYPTO_SERVICE (TlsSetCipherString, (Tls, CipherString), EFI_UNSUPPORTED);
+}
+
+/**
+  Set the TLS 1.3 ciphersuites to be used by the TLS object.
+**/
+EFI_STATUS
+EFIAPI
+TlsSetCipherSuites (
+  IN     VOID         *Tls,
+  IN     CONST CHAR8  *CipherSuites
+  )
+{
+  CALL_CRYPTO_SERVICE (TlsSetCipherSuites, (Tls, CipherSuites), EFI_UNSUPPORTED);
+}
+
+/**
+  Set the key exchange groups to be used by the TLS object.
+**/
+EFI_STATUS
+EFIAPI
+TlsSetGroups (
+  IN     VOID         *Tls,
+  IN     CONST CHAR8  *Groups
+  )
+{
+  CALL_CRYPTO_SERVICE (TlsSetGroups, (Tls, Groups), EFI_UNSUPPORTED);
+}
+
+/**
+  Skip certificate time validation for the TLS connection.
+**/
+EFI_STATUS
+EFIAPI
+TlsSetNoCheckTime (
+  IN     VOID  *Tls
+  )
+{
+  CALL_CRYPTO_SERVICE (TlsSetNoCheckTime, (Tls), EFI_UNSUPPORTED);
+}
+
+/**
   Gets the protocol version used by the specified TLS connection.
 
   This function returns the protocol version used by the specified TLS

@@ -5231,6 +5231,57 @@ CryptoServiceTlsSetSecurityLevel (
 }
 
 /**
+  Set the ciphers list to be used by the TLS object using OpenSSL cipher string format.
+**/
+EFI_STATUS
+EFIAPI
+CryptoServiceTlsSetCipherString (
+  IN     VOID         *Tls,
+  IN     CONST CHAR8  *CipherString
+  )
+{
+  return CALL_BASECRYPTLIB (TlsSet.Services.CipherString, TlsSetCipherString, (Tls, CipherString), EFI_UNSUPPORTED);
+}
+
+/**
+  Set the TLS 1.3 ciphersuites to be used by the TLS object.
+**/
+EFI_STATUS
+EFIAPI
+CryptoServiceTlsSetCipherSuites (
+  IN     VOID         *Tls,
+  IN     CONST CHAR8  *CipherSuites
+  )
+{
+  return CALL_BASECRYPTLIB (TlsSet.Services.CipherSuites, TlsSetCipherSuites, (Tls, CipherSuites), EFI_UNSUPPORTED);
+}
+
+/**
+  Set the key exchange groups to be used by the TLS object.
+**/
+EFI_STATUS
+EFIAPI
+CryptoServiceTlsSetGroups (
+  IN     VOID         *Tls,
+  IN     CONST CHAR8  *Groups
+  )
+{
+  return CALL_BASECRYPTLIB (TlsSet.Services.Groups, TlsSetGroups, (Tls, Groups), EFI_UNSUPPORTED);
+}
+
+/**
+  Skip certificate time validation for the TLS connection.
+**/
+EFI_STATUS
+EFIAPI
+CryptoServiceTlsSetNoCheckTime (
+  IN     VOID  *Tls
+  )
+{
+  return CALL_BASECRYPTLIB (TlsSet.Services.NoCheckTime, TlsSetNoCheckTime, (Tls), EFI_UNSUPPORTED);
+}
+
+/**
   Set the signature algorithm list to used by the TLS object.
 
   This function sets the signature algorithms for use by a specified TLS object.
@@ -7246,6 +7297,10 @@ const EDKII_CRYPTO_PROTOCOL  mEdkiiCrypto = {
   /// TLS Set (Continued)
   CryptoServiceTlsSetServerName,
   CryptoServiceTlsSetSecurityLevel,
+  CryptoServiceTlsSetCipherString,
+  CryptoServiceTlsSetCipherSuites,
+  CryptoServiceTlsSetGroups,
+  CryptoServiceTlsSetNoCheckTime,
   /// Pkcs (Continued)
   CryptoServicePkcs7GetSignerInfoNum,
   CryptoServicePkcs7GetVerifyOidList,

@@ -94,6 +94,13 @@ TlsSetVersion (
       SSL_set_min_proto_version (TlsConn->Ssl, TLS1_2_VERSION);
       SSL_set_max_proto_version (TlsConn->Ssl, TLS1_2_VERSION);
       break;
+    case TLS1_3_VERSION:
+      //
+      // TLS 1.3
+      //
+      SSL_set_min_proto_version (TlsConn->Ssl, TLS1_3_VERSION);
+      SSL_set_max_proto_version (TlsConn->Ssl, TLS1_3_VERSION);
+      break;
     default:
       //
       // Unsupported Protocol Version
@@ -139,10 +146,8 @@ TlsSetConnectionEnd (
   } else {
     //
     // Set TLS to work in Server mode.
-    // It is unsupported for UEFI version currently.
     //
-    // SSL_set_accept_state (TlsConn->Ssl);
-    return EFI_UNSUPPORTED;
+    SSL_set_accept_state (TlsConn->Ssl);
   }
 
   return EFI_SUCCESS;
@@ -939,6 +944,25 @@ TlsSetHostPrivateKeyEx (
     goto verify;
   }
 
+  //
+  // Try to parse the private key in generic PKCS#8 DER format.
+  // This handles all key types including PQC algorithms (ML-DSA, SLH-DSA, etc.)
+  //
+  {
+    CONST UINT8  *TmpPtr;
+
+    TmpPtr = (CONST UINT8 *)Data;
+    Pkey   = d2i_AutoPrivateKey (NULL, &TmpPtr, (long)DataSize);
+    if (Pkey != NULL) {
+      if (SSL_use_PrivateKey (TlsConn->Ssl, Pkey) == 1) {
+        EVP_PKEY_free (Pkey);
+        goto verify;
+      }
+
+      EVP_PKEY_free (Pkey);
+    }
+  }
+
   // Try to parse the private key in PEM format or encrypted PKC#8
   Bio = BIO_new_mem_buf (Data, (int)DataSize);
   if (Bio != NULL) {
@@ -1717,4 +1741,188 @@ TlsGetExportKey (
            Context != NULL
            ) == 1 ?
          EFI_SUCCESS : EFI_PROTOCOL_ERROR;
+}
+
+/**
+  Set the ciphers list to be used by the TLS object using OpenSSL cipher string format.
+
+  This function sets the ciphers for use by a specified TLS object using the
+  OpenSSL cipher string format (e.g. "AES128-SHA", "AES256-GCM-SHA384").
+  This affects TLS 1.2 and below cipher selection.
+
+  @param[in]  Tls           Pointer to a TLS object.
+  @param[in]  CipherString  Pointer to the cipher string in OpenSSL format.
+
+  @retval  EFI_SUCCESS           The cipher string was set successfully.
+  @retval  EFI_INVALID_PARAMETER The parameter is invalid.
+  @retval  EFI_UNSUPPORTED       No supported TLS cipher was found.
+
+**/
+EFI_STATUS
+EFIAPI
+TlsSetCipherString (
+  IN     VOID         *Tls,
+  IN     CONST CHAR8  *CipherString
+  )
+{
+  TLS_CONNECTION  *TlsConn;
+
+  TlsConn = (TLS_CONNECTION *)Tls;
+  if ((TlsConn == NULL) || (TlsConn->Ssl == NULL) || (CipherString == NULL)) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  if (SSL_set_cipher_list (TlsConn->Ssl, CipherString) != 1) {
+    return EFI_UNSUPPORTED;
+  }
+
+  return EFI_SUCCESS;
+}
+
+/**
+  Set the TLS 1.3 ciphersuites to be used by the TLS object.
+
+  This function sets the TLS 1.3 ciphersuites for use by a specified TLS object.
+  The ciphersuites string uses OpenSSL format (e.g. "TLS_AES_128_GCM_SHA256").
+
+  @param[in]  Tls           Pointer to a TLS object.
+  @param[in]  CipherSuites  Pointer to the TLS 1.3 ciphersuite string.
+
+  @retval  EFI_SUCCESS           The ciphersuites were set successfully.
+  @retval  EFI_INVALID_PARAMETER The parameter is invalid.
+  @retval  EFI_UNSUPPORTED       No supported TLS 1.3 ciphersuite was found.
+
+**/
+EFI_STATUS
+EFIAPI
+TlsSetCipherSuites (
+  IN     VOID         *Tls,
+  IN     CONST CHAR8  *CipherSuites
+  )
+{
+  TLS_CONNECTION  *TlsConn;
+
+  TlsConn = (TLS_CONNECTION *)Tls;
+  if ((TlsConn == NULL) || (TlsConn->Ssl == NULL) || (CipherSuites == NULL)) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  if (SSL_set_ciphersuites (TlsConn->Ssl, CipherSuites) != 1) {
+    return EFI_UNSUPPORTED;
+  }
+
+  return EFI_SUCCESS;
+}
+
+/**
+  Set the key exchange groups to be used by the TLS object.
+
+  This function sets the supported key exchange groups for a specified TLS object.
+  The groups string uses OpenSSL format (e.g. "X25519", "X25519MLKEM768:X25519").
+
+  @param[in]  Tls     Pointer to a TLS object.
+  @param[in]  Groups  Pointer to the groups string in OpenSSL format.
+
+  @retval  EFI_SUCCESS           The groups were set successfully.
+  @retval  EFI_INVALID_PARAMETER The parameter is invalid.
+  @retval  EFI_UNSUPPORTED       No supported group was found.
+
+**/
+EFI_STATUS
+EFIAPI
+TlsSetGroups (
+  IN     VOID         *Tls,
+  IN     CONST CHAR8  *Groups
+  )
+{
+  TLS_CONNECTION  *TlsConn;
+
+  TlsConn = (TLS_CONNECTION *)Tls;
+  if ((TlsConn == NULL) || (TlsConn->Ssl == NULL) || (Groups == NULL)) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  if (SSL_set1_groups_list (TlsConn->Ssl, Groups) != 1) {
+    return EFI_UNSUPPORTED;
+  }
+
+  return EFI_SUCCESS;
+}
+
+/**
+  Set the signature scheme list to be used by the TLS object.
+
+  This function sets the supported signature schemes for a specified TLS object.
+  The string uses OpenSSL sigalgs_list format.
+  For TLS 1.2: "RSA+SHA256", "ECDSA+SHA256"
+  For TLS 1.3: "rsa_pss_rsae_sha256", "ed25519", "mldsa65"
+  Multiple values can be colon-separated, e.g. "rsa_pss_rsae_sha256:rsa_pss_rsae_sha384".
+
+  @param[in]  Tls               Pointer to a TLS object.
+  @param[in]  SignatureSchemes  Pointer to the signature scheme string.
+
+  @retval  EFI_SUCCESS           The signature schemes were set successfully.
+  @retval  EFI_INVALID_PARAMETER The parameter is invalid.
+  @retval  EFI_UNSUPPORTED       No supported signature scheme was found.
+
+**/
+EFI_STATUS
+EFIAPI
+TlsSetSignatureSchemeList (
+  IN     VOID         *Tls,
+  IN     CONST CHAR8  *SignatureSchemes
+  )
+{
+  TLS_CONNECTION  *TlsConn;
+
+  TlsConn = (TLS_CONNECTION *)Tls;
+  if ((TlsConn == NULL) || (TlsConn->Ssl == NULL) || (SignatureSchemes == NULL)) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  if (SSL_set1_sigalgs_list (TlsConn->Ssl, SignatureSchemes) != 1) {
+    return EFI_UNSUPPORTED;
+  }
+
+  return EFI_SUCCESS;
+}
+
+/**
+  Skip certificate time validation for the TLS connection.
+
+  This function sets the X509_V_FLAG_NO_CHECK_TIME flag on the certificate
+  verification store, which skips the notBefore/notAfter time checks.
+  This is useful in test environments where system time may not be available.
+
+  @param[in]  Tls    Pointer to the TLS object.
+
+  @retval  EFI_SUCCESS           The flag was set successfully.
+  @retval  EFI_INVALID_PARAMETER The parameter is invalid.
+  @retval  EFI_ABORTED           Failed to get the certificate store.
+
+**/
+EFI_STATUS
+EFIAPI
+TlsSetNoCheckTime (
+  IN     VOID  *Tls
+  )
+{
+  TLS_CONNECTION  *TlsConn;
+  SSL_CTX         *SslCtx;
+  X509_STORE      *X509Store;
+
+  TlsConn = (TLS_CONNECTION *)Tls;
+  if ((TlsConn == NULL) || (TlsConn->Ssl == NULL)) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  SslCtx    = SSL_get_SSL_CTX (TlsConn->Ssl);
+  X509Store = SSL_CTX_get_cert_store (SslCtx);
+  if (X509Store == NULL) {
+    return EFI_ABORTED;
+  }
+
+  X509_STORE_set_flags (X509Store, X509_V_FLAG_NO_CHECK_TIME);
+
+  return EFI_SUCCESS;
 }

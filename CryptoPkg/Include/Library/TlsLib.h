@@ -969,4 +969,112 @@ TlsGetExportKey (
   IN     UINTN       KeyBufferLen
   );
 
+/**
+  Set the ciphers list to be used by the TLS object using OpenSSL cipher string format.
+
+  This function sets the ciphers for use by a specified TLS object using the
+  OpenSSL cipher string format (e.g. "AES128-SHA", "AES256-GCM-SHA384").
+  This affects TLS 1.2 and below cipher selection.
+
+  @param[in]  Tls           Pointer to a TLS object.
+  @param[in]  CipherString  Pointer to the cipher string in OpenSSL format.
+
+  @retval  EFI_SUCCESS           The cipher string was set successfully.
+  @retval  EFI_INVALID_PARAMETER The parameter is invalid.
+  @retval  EFI_UNSUPPORTED       No supported TLS cipher was found.
+
+**/
+EFI_STATUS
+EFIAPI
+TlsSetCipherString (
+  IN     VOID         *Tls,
+  IN     CONST CHAR8  *CipherString
+  );
+
+/**
+  Set the TLS 1.3 ciphersuites to be used by the TLS object.
+
+  This function sets the TLS 1.3 ciphersuites for use by a specified TLS object.
+  The ciphersuites string uses OpenSSL format (e.g. "TLS_AES_128_GCM_SHA256").
+
+  @param[in]  Tls           Pointer to a TLS object.
+  @param[in]  CipherSuites  Pointer to the TLS 1.3 ciphersuite string.
+
+  @retval  EFI_SUCCESS           The ciphersuites were set successfully.
+  @retval  EFI_INVALID_PARAMETER The parameter is invalid.
+  @retval  EFI_UNSUPPORTED       No supported TLS 1.3 ciphersuite was found.
+
+**/
+EFI_STATUS
+EFIAPI
+TlsSetCipherSuites (
+  IN     VOID         *Tls,
+  IN     CONST CHAR8  *CipherSuites
+  );
+
+/**
+  Set the key exchange groups to be used by the TLS object.
+
+  This function sets the supported key exchange groups for a specified TLS object.
+  The groups string uses OpenSSL format (e.g. "X25519", "X25519MLKEM768:X25519").
+
+  @param[in]  Tls     Pointer to a TLS object.
+  @param[in]  Groups  Pointer to the groups string in OpenSSL format.
+
+  @retval  EFI_SUCCESS           The groups were set successfully.
+  @retval  EFI_INVALID_PARAMETER The parameter is invalid.
+  @retval  EFI_UNSUPPORTED       No supported group was found.
+
+**/
+EFI_STATUS
+EFIAPI
+TlsSetGroups (
+  IN     VOID         *Tls,
+  IN     CONST CHAR8  *Groups
+  );
+
+/**
+  Set the signature scheme list to be used by the TLS object.
+
+  This function sets the supported signature schemes for a specified TLS object.
+  The string uses OpenSSL sigalgs_list format.
+  For TLS 1.2: "RSA+SHA256", "ECDSA+SHA256"
+  For TLS 1.3: "rsa_pss_rsae_sha256", "ed25519", "mldsa65"
+  Multiple values can be colon-separated, e.g. "rsa_pss_rsae_sha256:rsa_pss_rsae_sha384".
+
+  @param[in]  Tls               Pointer to a TLS object.
+  @param[in]  SignatureSchemes  Pointer to the signature scheme string.
+
+  @retval  EFI_SUCCESS           The signature schemes were set successfully.
+  @retval  EFI_INVALID_PARAMETER The parameter is invalid.
+  @retval  EFI_UNSUPPORTED       No supported signature scheme was found.
+
+**/
+EFI_STATUS
+EFIAPI
+TlsSetSignatureSchemeList (
+  IN     VOID         *Tls,
+  IN     CONST CHAR8  *SignatureSchemes
+  );
+
+/**
+  Skip certificate time validation for the TLS connection.
+
+  This function sets the X509_V_FLAG_NO_CHECK_TIME flag on the certificate
+  verification store, which skips the notBefore/notAfter time checks.
+  This is useful in test environments where system time may not be available.
+
+  @param[in]  Tls    Pointer to the TLS object.
+
+  @retval  EFI_SUCCESS           The flag was set successfully.
+  @retval  EFI_INVALID_PARAMETER The parameter is invalid.
+  @retval  EFI_ABORTED           Failed to get the certificate store.
+
+**/
+EFI_STATUS
+EFIAPI
+TlsSetNoCheckTime (
+  IN     VOID  *Tls
+  );
+
 #endif // __TLS_LIB_H__

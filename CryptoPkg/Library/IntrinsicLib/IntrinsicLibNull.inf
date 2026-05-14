@@ -1,0 +1,24 @@
+## @file
+#  Null Intrinsic Routines for HOST_APPLICATION builds.
+#
+#  On HOST_APPLICATION targets the C runtime already provides memcpy,
+#  memset, etc., so no additional intrinsic library is needed.
+#
+#  Copyright (c) 2025, Intel Corporation. All rights reserved.<BR>
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = BaseIntrinsicLibNull
+  FILE_GUID                      = A7E3E1F0-6242-4F9E-B051-7FD6B4A0B27A
+  MODULE_TYPE                    = HOST_APPLICATION
+  VERSION_STRING                 = 1.0
+  LIBRARY_CLASS                  = IntrinsicLib|HOST_APPLICATION
+
+[Sources]
+  IntrinsicLibNull.c
+
+[Packages]
+  MdePkg/MdePkg.dec

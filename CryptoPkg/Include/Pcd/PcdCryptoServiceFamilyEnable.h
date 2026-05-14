@@ -332,6 +332,10 @@ typedef struct {
       UINT8    EcCurve            : 1;
       UINT8    ServerName         : 1;
       UINT8    SecurityLevel      : 1;
+      UINT8    CipherString       : 1;
+      UINT8    CipherSuites       : 1;
+      UINT8    Groups             : 1;
+      UINT8    NoCheckTime        : 1;
     } Services;
     UINT32    Family;
   } TlsSet;

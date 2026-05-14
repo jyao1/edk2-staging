@@ -90,7 +90,7 @@ TlsCtxNew (
 
   ProtoVersion = (MajorVer << 8) | MinorVer;
 
-  TlsCtx = SSL_CTX_new (SSLv23_client_method ());
+  TlsCtx = SSL_CTX_new (TLS_method ());
   if (TlsCtx == NULL) {
     return NULL;
   }
