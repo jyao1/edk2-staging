@@ -223,9 +223,6 @@ extern "C" {
 # ifndef OPENSSL_NO_ML_DSA
 #  define OPENSSL_NO_ML_DSA
 # endif
-# ifndef OPENSSL_NO_ML_KEM
-#  define OPENSSL_NO_ML_KEM
-# endif
 # ifndef OPENSSL_NO_MSAN
 #  define OPENSSL_NO_MSAN
 # endif

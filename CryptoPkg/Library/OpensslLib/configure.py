@@ -52,7 +52,6 @@ def openssl_configure(openssldir, target, ec = True):
         'no-module',
         'no-md4',
         'no-mdc2',
-        'no-ml-kem',
         'no-multiblock',
         'no-nextprotoneg',
         'no-pic',

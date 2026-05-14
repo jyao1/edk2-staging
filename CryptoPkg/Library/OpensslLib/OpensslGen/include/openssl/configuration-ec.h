@@ -208,9 +208,6 @@ extern "C" {
 # ifndef OPENSSL_NO_MDC2
 #  define OPENSSL_NO_MDC2
 # endif
-# ifndef OPENSSL_NO_ML_KEM
-#  define OPENSSL_NO_ML_KEM
-# endif
 # ifndef OPENSSL_NO_MSAN
 #  define OPENSSL_NO_MSAN
 # endif
