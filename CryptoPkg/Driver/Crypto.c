@@ -5688,6 +5688,78 @@ CryptoServiceTlsGetExportKey (
 }
 
 /**
+  Get the list of TLS protocol versions supported by the TLS library.
+**/
+EFI_STATUS
+EFIAPI
+CryptoServiceTlsGetSupportedVersions (
+  OUT    UINT16  *Versions      OPTIONAL,
+  IN OUT UINTN   *VersionCount
+  )
+{
+  return CALL_BASECRYPTLIB (
+           TlsGet.Services.SupportedVersions,
+           TlsGetSupportedVersions,
+           (Versions, VersionCount),
+           EFI_UNSUPPORTED
+           );
+}
+
+/**
+  Get the list of TLS cipher suites supported by the TLS library.
+**/
+EFI_STATUS
+EFIAPI
+CryptoServiceTlsGetSupportedCipherSuites (
+  OUT    UINT16  *CipherSuites  OPTIONAL,
+  IN OUT UINTN   *CipherCount
+  )
+{
+  return CALL_BASECRYPTLIB (
+           TlsGet.Services.SupportedCipherSuites,
+           TlsGetSupportedCipherSuites,
+           (CipherSuites, CipherCount),
+           EFI_UNSUPPORTED
+           );
+}
+
+/**
+  Get the list of TLS key exchange groups supported by the TLS library.
+**/
+EFI_STATUS
+EFIAPI
+CryptoServiceTlsGetSupportedGroups (
+  OUT    UINT16  *Groups      OPTIONAL,
+  IN OUT UINTN   *GroupCount
+  )
+{
+  return CALL_BASECRYPTLIB (
+           TlsGet.Services.SupportedGroups,
+           TlsGetSupportedGroups,
+           (Groups, GroupCount),
+           EFI_UNSUPPORTED
+           );
+}
+
+/**
+  Get the list of TLS signature schemes supported by the TLS library.
+**/
+EFI_STATUS
+EFIAPI
+CryptoServiceTlsGetSupportedSignatureSchemes (
+  OUT    UINT16  *SigAlgs     OPTIONAL,
+  IN OUT UINTN   *SigAlgCount
+  )
+{
+  return CALL_BASECRYPTLIB (
+           TlsGet.Services.SupportedSignatureSchemes,
+           TlsGetSupportedSignatureSchemes,
+           (SigAlgs, SigAlgCount),
+           EFI_UNSUPPORTED
+           );
+}
+
+/**
   Carries out the RSA-SSA signature generation with EMSA-PSS encoding scheme.
 
   This function carries out the RSA-SSA signature generation with EMSA-PSS encoding scheme defined in
@@ -7306,4 +7378,9 @@ const EDKII_CRYPTO_PROTOCOL  mEdkiiCrypto = {
   CryptoServicePkcs7GetVerifyOidList,
   /// X509 (Continued)
   CryptoServiceX509GetSignatureAlgorithmAscii,
+  /// TLS Get (Continued)
+  CryptoServiceTlsGetSupportedVersions,
+  CryptoServiceTlsGetSupportedCipherSuites,
+  CryptoServiceTlsGetSupportedGroups,
+  CryptoServiceTlsGetSupportedSignatureSchemes,
 };

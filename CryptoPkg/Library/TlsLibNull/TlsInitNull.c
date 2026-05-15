@@ -108,3 +108,63 @@ TlsNew (
   ASSERT (FALSE);
   return NULL;
 }
+
+/**
+  Get the list of TLS protocol versions supported by the TLS library.
+
+  @retval EFI_UNSUPPORTED  TLS is not supported by this implementation.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedVersions (
+  OUT    UINT16  *Versions      OPTIONAL,
+  IN OUT UINTN   *VersionCount
+  )
+{
+  return EFI_UNSUPPORTED;
+}
+
+/**
+  Get the list of TLS cipher suites supported by the TLS library.
+
+  @retval EFI_UNSUPPORTED  TLS is not supported by this implementation.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedCipherSuites (
+  OUT    UINT16  *CipherSuites  OPTIONAL,
+  IN OUT UINTN   *CipherCount
+  )
+{
+  return EFI_UNSUPPORTED;
+}
+
+/**
+  Get the list of TLS key exchange groups supported by the TLS library.
+
+  @retval EFI_UNSUPPORTED  TLS is not supported by this implementation.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedGroups (
+  OUT    UINT16  *Groups      OPTIONAL,
+  IN OUT UINTN   *GroupCount
+  )
+{
+  return EFI_UNSUPPORTED;
+}
+
+/**
+  Get the list of TLS signature schemes supported by the TLS library.
+
+  @retval EFI_UNSUPPORTED  TLS is not supported by this implementation.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedSignatureSchemes (
+  OUT    UINT16  *SigAlgs     OPTIONAL,
+  IN OUT UINTN   *SigAlgCount
+  )
+{
+  return EFI_UNSUPPORTED;
+}

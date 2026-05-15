@@ -4459,6 +4459,78 @@ EFI_STATUS
   );
 
 /**
+  Get the list of TLS protocol versions supported by the TLS library.
+
+  @param[out]     Versions      Buffer for UINT16 version values. May be NULL.
+  @param[in,out]  VersionCount  On input, max entries. On output, actual count.
+
+  @retval EFI_SUCCESS           Version list returned successfully.
+  @retval EFI_INVALID_PARAMETER VersionCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  Buffer too small, VersionCount updated.
+  @retval EFI_UNSUPPORTED       TLS is not supported.
+**/
+typedef
+EFI_STATUS
+(EFIAPI *EDKII_CRYPTO_TLS_GET_SUPPORTED_VERSIONS)(
+  OUT    UINT16                    *Versions      OPTIONAL,
+  IN OUT UINTN                     *VersionCount
+  );
+
+/**
+  Get the list of TLS cipher suites supported by the TLS library.
+
+  @param[out]     CipherSuites  Buffer for UINT16 IANA cipher suite IDs. May be NULL.
+  @param[in,out]  CipherCount   On input, max entries. On output, actual count.
+
+  @retval EFI_SUCCESS           Cipher suite list returned successfully.
+  @retval EFI_INVALID_PARAMETER CipherCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  Buffer too small, CipherCount updated.
+  @retval EFI_UNSUPPORTED       TLS is not supported.
+**/
+typedef
+EFI_STATUS
+(EFIAPI *EDKII_CRYPTO_TLS_GET_SUPPORTED_CIPHER_SUITES)(
+  OUT    UINT16                    *CipherSuites  OPTIONAL,
+  IN OUT UINTN                     *CipherCount
+  );
+
+/**
+  Get the list of TLS key exchange groups supported by the TLS library.
+
+  @param[out]     Groups      Buffer for UINT16 IANA named group IDs. May be NULL.
+  @param[in,out]  GroupCount  On input, max entries. On output, actual count.
+
+  @retval EFI_SUCCESS           Group list returned successfully.
+  @retval EFI_INVALID_PARAMETER GroupCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  Buffer too small, GroupCount updated.
+  @retval EFI_UNSUPPORTED       TLS is not supported.
+**/
+typedef
+EFI_STATUS
+(EFIAPI *EDKII_CRYPTO_TLS_GET_SUPPORTED_GROUPS)(
+  OUT    UINT16                    *Groups      OPTIONAL,
+  IN OUT UINTN                     *GroupCount
+  );
+
+/**
+  Get the list of TLS signature schemes supported by the TLS library.
+
+  @param[out]     SigAlgs     Buffer for UINT16 IANA SignatureScheme IDs. May be NULL.
+  @param[in,out]  SigAlgCount On input, max entries. On output, actual count.
+
+  @retval EFI_SUCCESS           Signature scheme list returned successfully.
+  @retval EFI_INVALID_PARAMETER SigAlgCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  Buffer too small, SigAlgCount updated.
+  @retval EFI_UNSUPPORTED       TLS is not supported.
+**/
+typedef
+EFI_STATUS
+(EFIAPI *EDKII_CRYPTO_TLS_GET_SUPPORTED_SIGNATURE_SCHEMES)(
+  OUT    UINT16                    *SigAlgs     OPTIONAL,
+  IN OUT UINTN                     *SigAlgCount
+  );
+
+/**
   Gets the CA-supplied certificate revocation list data set in the specified
   TLS object.
 
@@ -5899,6 +5971,11 @@ struct _EDKII_CRYPTO_PROTOCOL {
   EDKII_CRYPTO_PKCS7_GET_VERIFY_OID_LIST              Pkcs7GetVerifyOidList;
   /// X509 (Continued)
   EDKII_CRYPTO_X509_GET_SIGNATURE_ALGORITHM_ASCII     X509GetSignatureAlgorithmAscii;
+  /// TLS Get (Continued)
+  EDKII_CRYPTO_TLS_GET_SUPPORTED_VERSIONS             TlsGetSupportedVersions;
+  EDKII_CRYPTO_TLS_GET_SUPPORTED_CIPHER_SUITES        TlsGetSupportedCipherSuites;
+  EDKII_CRYPTO_TLS_GET_SUPPORTED_GROUPS               TlsGetSupportedGroups;
+  EDKII_CRYPTO_TLS_GET_SUPPORTED_SIGNATURE_SCHEMES  TlsGetSupportedSignatureSchemes;
 };
 
 extern GUID  gEdkiiCryptoProtocolGuid;

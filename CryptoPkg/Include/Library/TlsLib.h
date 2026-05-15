@@ -1077,4 +1077,122 @@ TlsSetNoCheckTime (
   IN     VOID  *Tls
   );
 
+/**
+  Get the list of TLS protocol versions supported by the TLS library.
+
+  This function returns the TLS protocol version values supported by the
+  underlying TLS implementation. Each version is a UINT16 value encoded as
+  (MajorVersion << 8 | MinorVersion), e.g. 0x0301 for TLS 1.0, 0x0303 for
+  TLS 1.2.
+
+  If Versions is NULL, only the count of supported versions is returned
+  in VersionCount.
+
+  @param[out]     Versions      Pointer to caller-allocated buffer for UINT16
+                                version values. May be NULL to query count only.
+  @param[in,out]  VersionCount  On input, the maximum number of entries the
+                                Versions buffer can hold. On output, the actual
+                                number of supported versions.
+
+  @retval EFI_SUCCESS           The version list was returned successfully.
+  @retval EFI_INVALID_PARAMETER VersionCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  The Versions buffer is too small. VersionCount
+                                is updated with the required count.
+  @retval EFI_UNSUPPORTED       TLS is not supported by this implementation.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedVersions (
+  OUT    UINT16  *Versions      OPTIONAL,
+  IN OUT UINTN   *VersionCount
+  );
+
+/**
+  Get the list of TLS cipher suites supported by the TLS library.
+
+  This function returns the IANA cipher suite identifiers for all cipher
+  suites available in the underlying TLS implementation at the default
+  security level.
+
+  If CipherSuites is NULL, only the count of supported cipher suites is
+  returned in CipherCount.
+
+  @param[out]     CipherSuites  Pointer to caller-allocated buffer for UINT16
+                                IANA cipher suite IDs. May be NULL to query
+                                count only.
+  @param[in,out]  CipherCount   On input, the maximum number of entries the
+                                CipherSuites buffer can hold. On output, the
+                                actual number of supported cipher suites.
+
+  @retval EFI_SUCCESS           The cipher suite list was returned successfully.
+  @retval EFI_INVALID_PARAMETER CipherCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  The CipherSuites buffer is too small. CipherCount
+                                is updated with the required count.
+  @retval EFI_UNSUPPORTED       TLS is not supported by this implementation.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedCipherSuites (
+  OUT    UINT16  *CipherSuites  OPTIONAL,
+  IN OUT UINTN   *CipherCount
+  );
+
+/**
+  Get the list of TLS key exchange groups supported by the TLS library.
+
+  This function returns the IANA named group identifiers for all key
+  exchange groups available in the underlying TLS implementation.
+
+  If Groups is NULL, only the count of supported groups is returned
+  in GroupCount.
+
+  @param[out]     Groups      Pointer to caller-allocated buffer for UINT16
+                              IANA named group IDs. May be NULL to query
+                              count only.
+  @param[in,out]  GroupCount  On input, the maximum number of entries the
+                              Groups buffer can hold. On output, the actual
+                              number of supported groups.
+
+  @retval EFI_SUCCESS           The group list was returned successfully.
+  @retval EFI_INVALID_PARAMETER GroupCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  The Groups buffer is too small. GroupCount
+                                is updated with the required count.
+  @retval EFI_UNSUPPORTED       TLS is not supported by this implementation.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedGroups (
+  OUT    UINT16  *Groups      OPTIONAL,
+  IN OUT UINTN   *GroupCount
+  );
+
+/**
+  Get the list of TLS signature schemes supported by the TLS library.
+
+  This function returns the IANA TLS SignatureScheme identifiers for all
+  signature schemes available in the underlying TLS implementation.
+
+  If SigAlgs is NULL, only the count of supported signature schemes is
+  returned in SigAlgCount.
+
+  @param[out]     SigAlgs     Pointer to caller-allocated buffer for UINT16
+                              IANA SignatureScheme IDs. May be NULL to query
+                              count only.
+  @param[in,out]  SigAlgCount On input, the maximum number of entries the
+                              SigAlgs buffer can hold. On output, the actual
+                              number of supported signature schemes.
+
+  @retval EFI_SUCCESS           The signature scheme list was returned.
+  @retval EFI_INVALID_PARAMETER SigAlgCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  The SigAlgs buffer is too small. SigAlgCount
+                                is updated with the required count.
+  @retval EFI_UNSUPPORTED       TLS is not supported by this implementation.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedSignatureSchemes (
+  OUT    UINT16  *SigAlgs     OPTIONAL,
+  IN OUT UINTN   *SigAlgCount
+  );
+
 #endif // __TLS_LIB_H__

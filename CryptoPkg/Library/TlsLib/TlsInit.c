@@ -261,3 +261,473 @@ TlsNew (
     );
   return (VOID *)TlsConn;
 }
+
+/**
+  Get the list of TLS protocol versions supported by the TLS library.
+
+  The supported versions are determined by the compile-time OpenSSL
+  configuration. Currently TLS 1.0, 1.1, and 1.2 are supported
+  (TLS 1.3 is disabled via no-tls1_3 in the OpenSSL build).
+
+  @param[out]     Versions      Buffer for UINT16 version values.
+  @param[in,out]  VersionCount  On input, max entries. On output, actual count.
+
+  @retval EFI_SUCCESS           Version list returned successfully.
+  @retval EFI_INVALID_PARAMETER VersionCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  Buffer too small, VersionCount updated.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedVersions (
+  OUT    UINT16  *Versions      OPTIONAL,
+  IN OUT UINTN   *VersionCount
+  )
+{
+  //
+  // Supported TLS versions in the current OpenSSL build.
+  //
+  STATIC CONST UINT16  SupportedVersions[] = {
+    0x0301,  // TLS 1.0
+    0x0302,  // TLS 1.1
+    0x0303,  // TLS 1.2
+    0x0304,  // TLS 1.3
+  };
+
+  UINTN  Count;
+
+  if (VersionCount == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Count = ARRAY_SIZE (SupportedVersions);
+
+  if ((Versions == NULL) || (*VersionCount < Count)) {
+    *VersionCount = Count;
+    if (Versions == NULL) {
+      return EFI_SUCCESS;
+    }
+
+    return EFI_BUFFER_TOO_SMALL;
+  }
+
+  CopyMem (Versions, SupportedVersions, Count * sizeof (UINT16));
+  *VersionCount = Count;
+  return EFI_SUCCESS;
+}
+
+/**
+  Get the list of TLS cipher suites supported by the TLS library.
+
+  Creates a temporary SSL_CTX and SSL object to query the default cipher
+  list at security level 3 (matching TlsNew()), then extracts the IANA
+  cipher suite identifiers.
+
+  @param[out]     CipherSuites  Buffer for UINT16 IANA cipher suite IDs.
+  @param[in,out]  CipherCount   On input, max entries. On output, actual count.
+
+  @retval EFI_SUCCESS           Cipher suite list returned successfully.
+  @retval EFI_INVALID_PARAMETER CipherCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  Buffer too small, CipherCount updated.
+  @retval EFI_UNSUPPORTED       Failed to create TLS context.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedCipherSuites (
+  OUT    UINT16  *CipherSuites  OPTIONAL,
+  IN OUT UINTN   *CipherCount
+  )
+{
+  SSL_CTX             *Ctx;
+  SSL                 *Ssl;
+  STACK_OF (SSL_CIPHER) *Ciphers;
+  CONST SSL_CIPHER    *Cipher;
+  UINTN               Count;
+  UINTN               Index;
+
+  if (CipherCount == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  //
+  // Create a temporary SSL_CTX with TLS 1.0 as minimum (same as production).
+  //
+  Ctx = SSL_CTX_new (SSLv23_client_method ());
+  if (Ctx == NULL) {
+    return EFI_UNSUPPORTED;
+  }
+
+  SSL_CTX_set_options (Ctx, SSL_OP_NO_SSLv3);
+  SSL_CTX_set_min_proto_version (Ctx, TLS1_VERSION);
+
+  Ssl = SSL_new (Ctx);
+  if (Ssl == NULL) {
+    SSL_CTX_free (Ctx);
+    return EFI_UNSUPPORTED;
+  }
+
+  //
+  // Set security level 3 to match what TlsNew() uses in production.
+  //
+  SSL_set_security_level (Ssl, 3);
+
+  //
+  // Get the cipher list after security level filtering.
+  //
+  Ciphers = SSL_get_ciphers (Ssl);
+  Count   = (Ciphers != NULL) ? (UINTN)sk_SSL_CIPHER_num (Ciphers) : 0;
+
+  if ((CipherSuites == NULL) || (*CipherCount < Count)) {
+    *CipherCount = Count;
+    SSL_free (Ssl);
+    SSL_CTX_free (Ctx);
+    if (CipherSuites == NULL) {
+      return EFI_SUCCESS;
+    }
+
+    return EFI_BUFFER_TOO_SMALL;
+  }
+
+  for (Index = 0; Index < Count; Index++) {
+    Cipher              = sk_SSL_CIPHER_value (Ciphers, (int)Index);
+    CipherSuites[Index] = (UINT16)SSL_CIPHER_get_protocol_id (Cipher);
+  }
+
+  *CipherCount = Count;
+
+  SSL_free (Ssl);
+  SSL_CTX_free (Ctx);
+
+  return EFI_SUCCESS;
+}
+
+//
+// Known TLS named group name-to-IANA-ID mapping.
+//
+typedef struct {
+  CONST CHAR8    *Name;
+  UINT16         GroupId;
+} TLS_GROUP_NAME_MAP;
+
+STATIC CONST TLS_GROUP_NAME_MAP  mGroupNameMap[] = {
+  // Classic ECDHE
+  { "secp256r1",          0x0017 },
+  { "P-256",              0x0017 },
+  { "secp384r1",          0x0018 },
+  { "P-384",              0x0018 },
+  { "secp521r1",          0x0019 },
+  { "P-521",              0x0019 },
+  { "x25519",             0x001D },
+  { "X25519",             0x001D },
+  { "x448",               0x001E },
+  { "X448",               0x001E },
+  // Classic FFDHE
+  { "ffdhe2048",          0x0100 },
+  { "ffdhe3072",          0x0101 },
+  { "ffdhe4096",          0x0102 },
+  { "ffdhe6144",          0x0103 },
+  { "ffdhe8192",          0x0104 },
+  // PQC -- ML-KEM (FIPS 203) standalone
+  { "ML-KEM-512",         0x0200 },
+  { "ML-KEM-768",         0x0201 },
+  { "ML-KEM-1024",        0x0202 },
+  // PQC -- ML-KEM hybrid
+  { "X25519MLKEM768",     0x4588 },
+  { "SecP256r1MLKEM768",  0x4589 },
+  { "X448MLKEM1024",      0x4590 },
+  { "SecP384r1MLKEM1024", 0x4591 },
+};
+
+/**
+  Look up the IANA group ID for a TLS group name.
+
+  @param[in]  Name  The group name string.
+
+  @return  IANA group ID, or 0 if not found.
+**/
+STATIC
+UINT16
+LookupGroupId (
+  IN CONST CHAR8  *Name
+  )
+{
+  UINTN  Index;
+
+  for (Index = 0; Index < ARRAY_SIZE (mGroupNameMap); Index++) {
+    if (AsciiStrCmp (Name, mGroupNameMap[Index].Name) == 0) {
+      return mGroupNameMap[Index].GroupId;
+    }
+  }
+
+  return 0;
+}
+
+/**
+  Get the list of TLS key exchange groups supported by the TLS library.
+
+  Creates a temporary SSL_CTX and queries the implemented groups via
+  SSL_CTX_get0_implemented_groups(), then maps group names to IANA
+  named group IDs.
+
+  @param[out]     Groups      Buffer for UINT16 IANA named group IDs.
+  @param[in,out]  GroupCount  On input, max entries. On output, actual count.
+
+  @retval EFI_SUCCESS           Group list returned successfully.
+  @retval EFI_INVALID_PARAMETER GroupCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  Buffer too small, GroupCount updated.
+  @retval EFI_UNSUPPORTED       Failed to create TLS context.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedGroups (
+  OUT    UINT16  *Groups      OPTIONAL,
+  IN OUT UINTN   *GroupCount
+  )
+{
+  SSL_CTX                  *Ctx;
+  STACK_OF (OPENSSL_CSTRING) *GroupNames;
+  UINTN                    Total;
+  UINTN                    Count;
+  UINTN                    Index;
+  CONST CHAR8              *Name;
+  UINT16                   GroupId;
+
+  if (GroupCount == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Ctx = SSL_CTX_new (TLS_method ());
+  if (Ctx == NULL) {
+    return EFI_UNSUPPORTED;
+  }
+
+  GroupNames = sk_OPENSSL_CSTRING_new_null ();
+  if (GroupNames == NULL) {
+    SSL_CTX_free (Ctx);
+    return EFI_UNSUPPORTED;
+  }
+
+  //
+  // Query all implemented groups (all=1 to include duplicates from
+  // different providers, which get0_implemented_groups deduplicates).
+  //
+  if (!SSL_CTX_get0_implemented_groups (Ctx, 1, GroupNames)) {
+    sk_OPENSSL_CSTRING_free (GroupNames);
+    SSL_CTX_free (Ctx);
+    return EFI_UNSUPPORTED;
+  }
+
+  //
+  // First pass: count groups with known IANA IDs.
+  //
+  Total = (UINTN)sk_OPENSSL_CSTRING_num (GroupNames);
+  Count = 0;
+  for (Index = 0; Index < Total; Index++) {
+    Name    = sk_OPENSSL_CSTRING_value (GroupNames, (int)Index);
+    GroupId = LookupGroupId (Name);
+    if (GroupId != 0) {
+      Count++;
+    }
+  }
+
+  if ((Groups == NULL) || (*GroupCount < Count)) {
+    *GroupCount = Count;
+    sk_OPENSSL_CSTRING_free (GroupNames);
+    SSL_CTX_free (Ctx);
+    if (Groups == NULL) {
+      return EFI_SUCCESS;
+    }
+
+    return EFI_BUFFER_TOO_SMALL;
+  }
+
+  //
+  // Second pass: fill in the IANA IDs.
+  //
+  Count = 0;
+  for (Index = 0; Index < Total; Index++) {
+    Name    = sk_OPENSSL_CSTRING_value (GroupNames, (int)Index);
+    GroupId = LookupGroupId (Name);
+    if (GroupId != 0) {
+      Groups[Count++] = GroupId;
+    }
+  }
+
+  *GroupCount = Count;
+
+  sk_OPENSSL_CSTRING_free (GroupNames);
+  SSL_CTX_free (Ctx);
+
+  return EFI_SUCCESS;
+}
+
+//
+// Known TLS signature scheme name-to-IANA-ID mapping.
+// Names match the IANA "TLS SignatureScheme" registry and the
+// names returned by SSL_get1_builtin_sigalgs().
+//
+typedef struct {
+  CONST CHAR8    *Name;
+  UINT16         SigAlgId;
+} TLS_SIGALG_NAME_MAP;
+
+STATIC CONST TLS_SIGALG_NAME_MAP  mSigAlgNameMap[] = {
+  // ECDSA
+  { "ecdsa_secp256r1_sha256",         0x0403 },
+  { "ecdsa_secp384r1_sha384",         0x0503 },
+  { "ecdsa_secp521r1_sha512",         0x0603 },
+  { "ecdsa_sha224",                   0x0303 },
+  { "ecdsa_sha1",                     0x0203 },
+  // EdDSA
+  { "ed25519",                        0x0807 },
+  { "ed448",                          0x0808 },
+  // RSA-PSS (RSAE)
+  { "rsa_pss_rsae_sha256",            0x0804 },
+  { "rsa_pss_rsae_sha384",            0x0805 },
+  { "rsa_pss_rsae_sha512",            0x0806 },
+  // RSA-PSS (PSS)
+  { "rsa_pss_pss_sha256",             0x0809 },
+  { "rsa_pss_pss_sha384",             0x080a },
+  { "rsa_pss_pss_sha512",             0x080b },
+  // RSA PKCS#1 v1.5
+  { "rsa_pkcs1_sha256",               0x0401 },
+  { "rsa_pkcs1_sha384",               0x0501 },
+  { "rsa_pkcs1_sha512",               0x0601 },
+  { "rsa_pkcs1_sha224",               0x0301 },
+  { "rsa_pkcs1_sha1",                 0x0201 },
+  // Brainpool ECDSA (TLS 1.3)
+  { "ecdsa_brainpoolP256r1tls13_sha256", 0x081a },
+  { "ecdsa_brainpoolP384r1tls13_sha384", 0x081b },
+  { "ecdsa_brainpoolP512r1tls13_sha512", 0x081c },
+  // PQC -- ML-DSA (FIPS 204)
+  { "mldsa44",                        0x0904 },
+  { "mldsa65",                        0x0905 },
+  { "mldsa87",                        0x0906 },
+};
+
+/**
+  Look up the IANA SignatureScheme ID for a TLS signature scheme name.
+
+  @param[in]  Name  The signature scheme name string.
+
+  @return  IANA SignatureScheme ID, or 0 if not found.
+**/
+STATIC
+UINT16
+LookupSigAlgId (
+  IN CONST CHAR8  *Name
+  )
+{
+  UINTN  Index;
+
+  for (Index = 0; Index < ARRAY_SIZE (mSigAlgNameMap); Index++) {
+    if (AsciiStrCmp (Name, mSigAlgNameMap[Index].Name) == 0) {
+      return mSigAlgNameMap[Index].SigAlgId;
+    }
+  }
+
+  return 0;
+}
+
+/**
+  Get the list of TLS signature schemes supported by the TLS library.
+
+  Calls SSL_get1_builtin_sigalgs() to obtain available signature scheme
+  names, then maps them to IANA TLS SignatureScheme identifiers (UINT16).
+
+  @param[out]     SigAlgs     Buffer for UINT16 IANA SignatureScheme IDs.
+  @param[in,out]  SigAlgCount On input, max entries. On output, actual count.
+
+  @retval EFI_SUCCESS           Signature scheme list returned successfully.
+  @retval EFI_INVALID_PARAMETER SigAlgCount is NULL.
+  @retval EFI_BUFFER_TOO_SMALL  Buffer too small, SigAlgCount updated.
+  @retval EFI_UNSUPPORTED       Failed to query signature schemes.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedSignatureSchemes (
+  OUT    UINT16  *SigAlgs     OPTIONAL,
+  IN OUT UINTN   *SigAlgCount
+  )
+{
+  CHAR8   *SigAlgStr;
+  CHAR8   *Ptr;
+  CHAR8   *Token;
+  UINTN   Count;
+  UINT16  SigAlgId;
+
+  if (SigAlgCount == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  SigAlgStr = SSL_get1_builtin_sigalgs (NULL);
+  if (SigAlgStr == NULL) {
+    return EFI_UNSUPPORTED;
+  }
+
+  //
+  // First pass: count signature schemes with known IANA IDs.
+  // The string is colon-separated: "name1:name2:name3"
+  //
+  Count = 0;
+  Ptr   = SigAlgStr;
+  while (*Ptr != '\0') {
+    Token = Ptr;
+    while ((*Ptr != ':') && (*Ptr != '\0')) {
+      Ptr++;
+    }
+
+    if (*Ptr == ':') {
+      *Ptr = '\0';
+      Ptr++;
+    }
+
+    SigAlgId = LookupSigAlgId (Token);
+    if (SigAlgId != 0) {
+      Count++;
+    }
+  }
+
+  if ((SigAlgs == NULL) || (*SigAlgCount < Count)) {
+    *SigAlgCount = Count;
+    OPENSSL_free (SigAlgStr);
+    if (SigAlgs == NULL) {
+      return EFI_SUCCESS;
+    }
+
+    return EFI_BUFFER_TOO_SMALL;
+  }
+
+  //
+  // Second pass: re-query and fill in the IANA IDs.
+  //
+  OPENSSL_free (SigAlgStr);
+  SigAlgStr = SSL_get1_builtin_sigalgs (NULL);
+  if (SigAlgStr == NULL) {
+    return EFI_UNSUPPORTED;
+  }
+
+  Count = 0;
+  Ptr   = SigAlgStr;
+  while (*Ptr != '\0') {
+    Token = Ptr;
+    while ((*Ptr != ':') && (*Ptr != '\0')) {
+      Ptr++;
+    }
+
+    if (*Ptr == ':') {
+      *Ptr = '\0';
+      Ptr++;
+    }
+
+    SigAlgId = LookupSigAlgId (Token);
+    if (SigAlgId != 0) {
+      SigAlgs[Count++] = SigAlgId;
+    }
+  }
+
+  *SigAlgCount = Count;
+
+  OPENSSL_free (SigAlgStr);
+
+  return EFI_SUCCESS;
+}

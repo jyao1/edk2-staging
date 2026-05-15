@@ -353,8 +353,12 @@ typedef struct {
       UINT8    CaCertificate        : 1;
       UINT8    HostPublicCert       : 1;
       UINT8    HostPrivateKey       : 1;
-      UINT8    CertRevocationList   : 1;
-      UINT8    ExportKey            : 1;
+      UINT8    CertRevocationList      : 1;
+      UINT8    ExportKey               : 1;
+      UINT8    SupportedVersions      : 1;
+      UINT8    SupportedCipherSuites  : 1;
+      UINT8    SupportedGroups        : 1;
+      UINT8    SupportedSignatureSchemes : 1;
     } Services;
     UINT32    Family;
   } TlsGet;

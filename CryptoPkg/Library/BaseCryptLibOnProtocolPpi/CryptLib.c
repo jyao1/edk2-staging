@@ -4911,6 +4911,58 @@ TlsGetExportKey (
     );
 }
 
+/**
+  Get the list of TLS protocol versions supported by the TLS library.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedVersions (
+  OUT    UINT16  *Versions      OPTIONAL,
+  IN OUT UINTN   *VersionCount
+  )
+{
+  CALL_CRYPTO_SERVICE (TlsGetSupportedVersions, (Versions, VersionCount), EFI_UNSUPPORTED);
+}
+
+/**
+  Get the list of TLS cipher suites supported by the TLS library.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedCipherSuites (
+  OUT    UINT16  *CipherSuites  OPTIONAL,
+  IN OUT UINTN   *CipherCount
+  )
+{
+  CALL_CRYPTO_SERVICE (TlsGetSupportedCipherSuites, (CipherSuites, CipherCount), EFI_UNSUPPORTED);
+}
+
+/**
+  Get the list of TLS key exchange groups supported by the TLS library.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedGroups (
+  OUT    UINT16  *Groups      OPTIONAL,
+  IN OUT UINTN   *GroupCount
+  )
+{
+  CALL_CRYPTO_SERVICE (TlsGetSupportedGroups, (Groups, GroupCount), EFI_UNSUPPORTED);
+}
+
+/**
+  Get the list of TLS signature algorithms supported by the TLS library.
+**/
+EFI_STATUS
+EFIAPI
+TlsGetSupportedSignatureSchemes (
+  OUT    UINT16  *SigAlgs     OPTIONAL,
+  IN OUT UINTN   *SigAlgCount
+  )
+{
+  CALL_CRYPTO_SERVICE (TlsGetSupportedSignatureSchemes, (SigAlgs, SigAlgCount), EFI_UNSUPPORTED);
+}
+
 // =====================================================================================
 //    Big number primitive
 // =====================================================================================
