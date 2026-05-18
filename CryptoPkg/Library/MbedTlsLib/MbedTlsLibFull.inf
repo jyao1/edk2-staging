@@ -36,6 +36,7 @@
   mbedtls/library/ecjpake.c
   mbedtls/library/ecp.c
   mbedtls/library/ecp_curves.c
+  mbedtls/library/ecp_curves_new.c
   mbedtls/library/error.c
   mbedtls/library/gcm.c
   mbedtls/library/hkdf.c
@@ -95,6 +96,7 @@
 [LibraryClasses]
   BaseLib
   BaseMemoryLib
+  BaseCryptLib
   DebugLib
   MemoryAllocationLib
 
