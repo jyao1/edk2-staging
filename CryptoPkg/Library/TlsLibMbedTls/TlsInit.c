@@ -7,6 +7,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 **/
 
 #include "InternalTlsLib.h"
+#include <psa/crypto.h>
 
 /**
   Custom RNG callback for MbedTLS that wraps EDK2's RandomBytes().
@@ -54,11 +55,14 @@ TlsInitialize (
   )
 {
   //
-  // MbedTLS does not require a global initialization call like OpenSSL.
-  // Individual contexts are initialized when created.
-  // Initialize the pseudorandom number generator.
+  // MbedTLS TLS 1.3 requires PSA Crypto to be initialized.
+  // Initialize the pseudorandom number generator first.
   //
-  return RandomSeed (NULL, 0);
+  if (!RandomSeed (NULL, 0)) {
+    return FALSE;
+  }
+
+  return (psa_crypto_init () == PSA_SUCCESS);
 }
 
 /**
@@ -265,27 +269,8 @@ TlsNew (
     return NULL;
   }
 
-  //
-  // Set up the SSL context with our config
-  //
-  Ret = mbedtls_ssl_setup (&TlsConn->Ssl, &TlsConn->Conf);
-  if (Ret != 0) {
-    TlsFree ((VOID *)TlsConn);
-    return NULL;
-  }
-
-  //
-  // Set BIO callbacks for memory-buffer I/O
-  //
-  mbedtls_ssl_set_bio (
-    &TlsConn->Ssl,
-    (void *)TlsConn,
-    TlsMbedTlsSend,
-    TlsMbedTlsRecv,
-    NULL
-    );
-
-  TlsConn->IsServer = FALSE;
+  TlsConn->IsServer     = FALSE;
+  TlsConn->SslSetupDone = FALSE;
 
   return (VOID *)TlsConn;
 }

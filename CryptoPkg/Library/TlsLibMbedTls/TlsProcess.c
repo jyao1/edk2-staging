@@ -119,6 +119,27 @@ TlsDoHandshake (
   }
 
   //
+  // Lazy SSL setup: defer mbedtls_ssl_setup until first handshake call
+  // so all configuration (version, ciphers, certs) is finalized.
+  //
+  if (!TlsConn->SslSetupDone) {
+    Ret = mbedtls_ssl_setup (&TlsConn->Ssl, &TlsConn->Conf);
+    if (Ret != 0) {
+      *BufferOutSize = 0;
+      return EFI_ABORTED;
+    }
+
+    mbedtls_ssl_set_bio (
+      &TlsConn->Ssl,
+      (void *)TlsConn,
+      TlsMbedTlsSend,
+      TlsMbedTlsRecv,
+      NULL
+      );
+    TlsConn->SslSetupDone = TRUE;
+  }
+
+  //
   // Reset output buffer position for new output
   //
   TlsConn->OutBufStart = 0;

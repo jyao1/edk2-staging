@@ -66,6 +66,7 @@ typedef struct {
   // Connection state flags
   //
   BOOLEAN                   IsServer;
+  BOOLEAN                   SslSetupDone;
   //
   // Signature algorithms list (must persist for lifetime of config)
   //

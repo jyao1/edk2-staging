@@ -76,9 +76,26 @@
   mbedtls/library/ssl_cookie.c
   mbedtls/library/ssl_ticket.c
   mbedtls/library/ssl_tls.c
+  mbedtls/library/ssl_tls13_client.c
+  mbedtls/library/ssl_tls13_generic.c
+  mbedtls/library/ssl_tls13_keys.c
+  mbedtls/library/ssl_tls13_server.c
   mbedtls/library/threading.c
   mbedtls/library/version.c
   mbedtls/library/version_features.c
+  mbedtls/library/psa_crypto.c
+  mbedtls/library/psa_crypto_aead.c
+  mbedtls/library/psa_crypto_cipher.c
+  mbedtls/library/psa_crypto_client.c
+  mbedtls/library/psa_crypto_driver_wrappers_no_static.c
+  mbedtls/library/psa_crypto_ecp.c
+  mbedtls/library/psa_crypto_ffdh.c
+  mbedtls/library/psa_crypto_hash.c
+  mbedtls/library/psa_crypto_mac.c
+  mbedtls/library/psa_crypto_pake.c
+  mbedtls/library/psa_crypto_rsa.c
+  mbedtls/library/psa_crypto_slot_management.c
+  mbedtls/library/psa_util.c
   mbedtls/library/x509.c
   mbedtls/library/x509write_crt.c
   mbedtls/library/x509write_csr.c
@@ -87,6 +104,7 @@
   mbedtls/library/x509_crt.c
   mbedtls/library/x509_csr.c
   mbedtls/library/platform_util.c
+  PsaExternalRng.c
   CrtWrapper.c
 
 [Packages]
@@ -111,8 +129,8 @@
   # warning C4389: signed/unsigned mismatch
   # /U_WIN32     : Avoid redfineded with WIN API
   #
-  MSFT:*_*_IA32_CC_FLAGS   = /U_WIN32 /DEFI32 /wd4244 /wd4132 /wd4245 /wd4310 /wd4204 /wd4389
-  MSFT:*_*_X64_CC_FLAGS   = /U_WIN32 /DEFI32 /wd4244 /wd4132 /wd4245 /wd4310 /wd4204 /wd4389
+  MSFT:*_*_IA32_CC_FLAGS   = /U_WIN32 /DEFI32 /wd4244 /wd4132 /wd4245 /wd4310 /wd4204 /wd4389 /wd4295
+  MSFT:*_*_X64_CC_FLAGS   = /U_WIN32 /DEFI32 /wd4244 /wd4132 /wd4245 /wd4310 /wd4204 /wd4389 /wd4295
 
 
   #
