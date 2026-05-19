@@ -144,12 +144,13 @@
   RngLib|MdeModulePkg/Library/BaseRngLibTimerLib/BaseRngLibTimerLib.inf
   IntrinsicLib|CryptoPkg/Library/IntrinsicLib/IntrinsicLib.inf
   OpensslLib|CryptoPkg/Library/OpensslLib/OpensslLibFullAccel.inf
-  TlsLib|CryptoPkg/Library/TlsLib/TlsLib.inf
 !if $(CRYPTO_PROVIDER) == MBEDTLS
   MbedTlsLib|CryptoPkg/Library/MbedTlsLib/MbedTlsLibFull.inf
   BaseCryptLib|CryptoPkg/Library/BaseCryptLibMbedTls/BaseCryptLib.inf
+  TlsLib|CryptoPkg/Library/TlsLibMbedTls/TlsLibMbedTls.inf
 !else
   BaseCryptLib|CryptoPkg/Library/BaseCryptLib/BaseCryptLib.inf
+  TlsLib|CryptoPkg/Library/TlsLib/TlsLib.inf
 !endif
 
 !if $(SECURE_BOOT_ENABLE) == TRUE
