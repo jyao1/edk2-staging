@@ -1,5 +1,8 @@
 ## @file
-# Host-based UnitTest for TLS Handshake
+# Host-based UnitTest for TLS Handshake (MbedTLS configuration)
+#
+# This INF excludes PQC test cases (ML-DSA, ML-KEM) that are not
+# supported by MbedTLS.
 #
 # Copyright (c) 2025, Intel Corporation. All rights reserved.<BR>
 # SPDX-License-Identifier: BSD-2-Clause-Patent
@@ -8,13 +11,13 @@
 [Defines]
   INF_VERSION    = 0x00010005
   BASE_NAME      = TlsLibUnitTestHost
-  FILE_GUID      = A1B2C3D4-E5F6-7890-ABCD-EF1234567890
+  FILE_GUID      = B2C3D4E5-F6A7-8901-BCDE-F12345678901
   MODULE_TYPE    = HOST_APPLICATION
   VERSION_STRING = 1.0
 
 [Sources]
   TlsTestMain.c
-  TlsTests.c
+  TlsTestsMbedTls.c
   TlsTestData.c
   TlsTestClient.c
   TlsTestServer.c

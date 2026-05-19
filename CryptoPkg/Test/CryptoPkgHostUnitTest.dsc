@@ -71,9 +71,7 @@
       OpensslLib|CryptoPkg/Library/OpensslLib/OpensslLibSm3.inf
       MbedTlsLib|CryptoPkg/Library/MbedTlsLib/MbedTlsLib.inf
   }
-  CryptoPkg/Test/UnitTest/Library/TlsLib/TestTlsLibHost.inf {
-    <Defines>
-      FILE_GUID = B2C3D4E5-F6A7-8901-BCDE-F12345678901
+  CryptoPkg/Test/UnitTest/Library/TlsLib/TestTlsLibHostMbedTls.inf {
     <LibraryClasses>
       BaseCryptLib|CryptoPkg/Library/BaseCryptLibMbedTls/UnitTestHostBaseCryptLib.inf
       TlsLib|CryptoPkg/Library/TlsLibMbedTls/TlsLibMbedTls.inf
