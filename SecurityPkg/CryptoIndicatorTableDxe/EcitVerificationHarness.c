@@ -402,6 +402,18 @@ EFI_GUID gEfiTcg2ProtocolGuid = {
   0x607f766c, 0x7455, 0x42be, {0x93,0x0b,0xe4,0xd7,0x6d,0xb2,0x72,0x0f}};
 
 // ============================================================================
+// EfiLocateFirstAcpiTable stub (from UefiLib)
+// After InstallAcpiTable, driver calls this to find the ACPI copy.
+// ============================================================================
+
+EFI_ACPI_DESCRIPTION_HEADER *EfiLocateFirstAcpiTable(UINT32 Signature) {
+  if (gInstallAcpiTableCalled && Signature == EFI_CRYPTO_INDICATOR_TABLE_SIGNATURE) {
+    return (EFI_ACPI_DESCRIPTION_HEADER *)gAcpiCopyBuffer;
+  }
+  return NULL;
+}
+
+// ============================================================================
 // INCLUDE THE REAL IMPLEMENTATION (never copy!)
 // The empty headers in CbmcStubs/ satisfy the #include directives.
 // All types and stubs above satisfy the symbol requirements.
@@ -822,12 +834,12 @@ void harness_P3_1(void) {
     "P3.1: InstallAcpiTable receives correct table size");
   __CPROVER_assert(gAcpiTablePointer != NULL,
     "P3.1: ACPI table copy was created (EfiAcpiReclaimMemory)");
-  // The ACPI copy is in a DIFFERENT buffer (simulating AcpiReclaimMemory)
-  __CPROVER_assert(gAcpiTablePointer != (VOID*)T,
-    "P3.1: ACPI protocol copies to separate memory (AcpiReclaimMemory != BootServicesData)");
-  // Content must match
-  __CPROVER_assert(my_memcmp_eq(gAcpiTablePointer, T, T->Header.Length),
-    "P3.1: ACPI copy content matches original table");
+  // After fix: ConfigurationTable now points to the ACPI copy (same pointer)
+  __CPROVER_assert(gAcpiTablePointer == (VOID*)T,
+    "P3.1: ConfigurationTable points to the ACPI copy");
+  // Content integrity: ACPI copy must have correct data
+  __CPROVER_assert(((EFI_ACPI_DESCRIPTION_HEADER*)gAcpiTablePointer)->Signature == EFI_CRYPTO_INDICATOR_TABLE_SIGNATURE,
+    "P3.1: ACPI copy has correct ECIT signature");
 }
 
 void harness_P3_2(void) {
@@ -845,19 +857,16 @@ void harness_P3_3(void) {
   //
   // P3.3: ConfigurationTable pointer SHALL reference the same memory as ACPI table.
   //
-  // With realistic ACPI protocol modeling (InstallAcpiTable COPIES data),
-  // this property WILL FAIL — revealing a spec-vs-implementation gap:
-  //   - ConfigurationTable pointer -> BootServicesData (from AllocateZeroPool)
-  //   - ACPI table pointer -> AcpiReclaimMemory (internal copy by protocol)
-  //
-  // This harness intentionally exposes the violation.
+  // After the fix: driver calls InstallAcpiTable first, then uses
+  // EfiLocateFirstAcpiTable to get the ACPI copy address, and passes
+  // that to InstallConfigurationTable. Both now point to same memory.
   //
   const EFI_CRYPTO_INDICATOR_TABLE *T = RunDriverWithAcpi();
   (void)T;
   __CPROVER_assert(gInstallAcpiTableCalled,
     "P3.3 precondition: ACPI table was installed");
   __CPROVER_assert(gCapturedTable == gAcpiTablePointer,
-    "P3.3: ConfigurationTable pointer == ACPI table pointer (EXPECTED TO FAIL)");
+    "P3.3: ConfigurationTable pointer == ACPI table pointer");
 }
 
 // ============================================================================
