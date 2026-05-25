@@ -39,6 +39,7 @@
   MemoryAllocationLib
   UefiBootServicesTableLib
   UefiDriverEntryPoint
+  UefiLib
 
 [Guids]
   gEfiCryptoIndicatorTableGuid               ## PRODUCES  ## Configuration Table

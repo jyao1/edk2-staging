@@ -18,6 +18,7 @@
 #include <Library/MemoryAllocationLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiDriverEntryPoint.h>
+#include <Library/UefiLib.h>
 #include <Library/TlsLib.h>
 #include <Protocol/AcpiTable.h>
 #include <Guid/CryptoIndicatorTable.h>
@@ -388,24 +389,16 @@ CryptoIndicatorTableDxeEntryPoint (
   Table->Header.Checksum = CalculateCheckSum8 ((UINT8 *)Table, TableSize);
 
   //
-  // Install the table as an EFI Configuration Table.
-  //
-  Status = gBS->InstallConfigurationTable (
-                  &gEfiCryptoIndicatorTableGuid,
-                  (VOID *)Table
-                  );
-  if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "CryptoIndicatorTableDxe: InstallConfigurationTable failed - %r\n", Status));
-    FreePool (Table);
-    return Status;
-  }
-
-  //
-  // Also install as an ACPI table if the ACPI Table Protocol is available.
+  // Install as ACPI table first if possible, then use the ACPI copy for
+  // ConfigurationTable so both point to the same physical memory.
   //
   {
-    EFI_ACPI_TABLE_PROTOCOL  *AcpiTable;
-    UINTN                    AcpiTableKey;
+    EFI_ACPI_TABLE_PROTOCOL   *AcpiTable;
+    UINTN                     AcpiTableKey;
+    VOID                      *ConfigTablePtr;
+    EFI_ACPI_DESCRIPTION_HEADER  *AcpiCopy;
+
+    ConfigTablePtr = (VOID *)Table;
 
     Status = gBS->LocateProtocol (
                     &gEfiAcpiTableProtocolGuid,
@@ -419,13 +412,37 @@ CryptoIndicatorTableDxeEntryPoint (
                             TableSize,
                             &AcpiTableKey
                             );
-      if (EFI_ERROR (Status)) {
-        DEBUG ((DEBUG_WARN, "CryptoIndicatorTableDxe: InstallAcpiTable failed - %r\n", Status));
-      } else {
+      if (!EFI_ERROR (Status)) {
         DEBUG ((DEBUG_INFO, "CryptoIndicatorTableDxe: ECIT installed as ACPI table\n"));
+        //
+        // Locate the ACPI copy so ConfigurationTable points to the same memory.
+        //
+        AcpiCopy = EfiLocateFirstAcpiTable (EFI_CRYPTO_INDICATOR_TABLE_SIGNATURE);
+        if (AcpiCopy != NULL) {
+          ConfigTablePtr = (VOID *)AcpiCopy;
+          FreePool (Table);
+        }
+      } else {
+        DEBUG ((DEBUG_WARN, "CryptoIndicatorTableDxe: InstallAcpiTable failed - %r\n", Status));
       }
     } else {
       DEBUG ((DEBUG_INFO, "CryptoIndicatorTableDxe: ACPI Table Protocol not available, skipping ACPI install\n"));
+    }
+
+    //
+    // Install ConfigurationTable pointing to the ACPI copy (if available)
+    // or the original pool buffer.
+    //
+    Status = gBS->InstallConfigurationTable (
+                    &gEfiCryptoIndicatorTableGuid,
+                    ConfigTablePtr
+                    );
+    if (EFI_ERROR (Status)) {
+      DEBUG ((DEBUG_ERROR, "CryptoIndicatorTableDxe: InstallConfigurationTable failed - %r\n", Status));
+      if (ConfigTablePtr == (VOID *)Table) {
+        FreePool (Table);
+      }
+      return Status;
     }
   }
 
