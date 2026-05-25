@@ -18,6 +18,8 @@
 #include <Library/MemoryAllocationLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiDriverEntryPoint.h>
+#include <Library/TlsLib.h>
+#include <Protocol/AcpiTable.h>
 #include <Guid/CryptoIndicatorTable.h>
 #include <Guid/ImageAuthentication.h>
 
@@ -234,6 +236,7 @@ CryptoIndicatorTableDxeEntryPoint (
   UINTN                        ImageRevocDataSize;
   UINTN                        ServicingAuthDataSize;
   CONST CHAR8                  *AllOids;
+  UINT8                        NumberOfEntries;
 
   //
   // Query the complete set of supported signing OIDs from the crypto library.
@@ -274,6 +277,7 @@ CryptoIndicatorTableDxeEntryPoint (
   //
   // Total table size: header + 5 entries.
   //
+  NumberOfEntries = 5;
   TableSize = sizeof (EFI_CRYPTO_INDICATOR_TABLE) +
               OidEntrySize +
               SecBootAuthEntrySize +
@@ -288,11 +292,23 @@ CryptoIndicatorTableDxeEntryPoint (
   }
 
   //
-  // Fill table header.
+  // Fill ACPI SDT header.
   //
-  Table->Version         = EFI_CRYPTO_INDICATOR_TABLE_VERSION;
-  Table->NumberOfEntries = 5;
-  Table->Reserved        = 0;
+  Table->Header.Signature    = EFI_CRYPTO_INDICATOR_TABLE_SIGNATURE;
+  Table->Header.Length       = (UINT32)TableSize;
+  Table->Header.Revision     = EFI_CRYPTO_INDICATOR_TABLE_VERSION;
+  Table->Header.Checksum     = 0;
+  CopyMem (Table->Header.OemId, "INTEL ", 6);
+  Table->Header.OemTableId   = SIGNATURE_64 ('E','D','K','2','E','C','I','T');
+  Table->Header.OemRevision  = 1;
+  Table->Header.CreatorId    = SIGNATURE_32 ('E','D','K','2');
+  Table->Header.CreatorRevision = 1;
+
+  //
+  // Fill ECIT-specific fields.
+  //
+  Table->NumberOfEntries = NumberOfEntries;
+  ZeroMem (Table->Reserved, sizeof (Table->Reserved));
 
   Buffer = (UINT8 *)Table + sizeof (EFI_CRYPTO_INDICATOR_TABLE);
 
@@ -366,6 +382,12 @@ CryptoIndicatorTableDxeEntryPoint (
     );
 
   //
+  // Compute ACPI checksum so entire table sums to zero.
+  //
+  Table->Header.Checksum = 0;
+  Table->Header.Checksum = CalculateCheckSum8 ((UINT8 *)Table, TableSize);
+
+  //
   // Install the table as an EFI Configuration Table.
   //
   Status = gBS->InstallConfigurationTable (
@@ -376,6 +398,35 @@ CryptoIndicatorTableDxeEntryPoint (
     DEBUG ((DEBUG_ERROR, "CryptoIndicatorTableDxe: InstallConfigurationTable failed - %r\n", Status));
     FreePool (Table);
     return Status;
+  }
+
+  //
+  // Also install as an ACPI table if the ACPI Table Protocol is available.
+  //
+  {
+    EFI_ACPI_TABLE_PROTOCOL  *AcpiTable;
+    UINTN                    AcpiTableKey;
+
+    Status = gBS->LocateProtocol (
+                    &gEfiAcpiTableProtocolGuid,
+                    NULL,
+                    (VOID **)&AcpiTable
+                    );
+    if (!EFI_ERROR (Status)) {
+      Status = AcpiTable->InstallAcpiTable (
+                            AcpiTable,
+                            Table,
+                            TableSize,
+                            &AcpiTableKey
+                            );
+      if (EFI_ERROR (Status)) {
+        DEBUG ((DEBUG_WARN, "CryptoIndicatorTableDxe: InstallAcpiTable failed - %r\n", Status));
+      } else {
+        DEBUG ((DEBUG_INFO, "CryptoIndicatorTableDxe: ECIT installed as ACPI table\n"));
+      }
+    } else {
+      DEBUG ((DEBUG_INFO, "CryptoIndicatorTableDxe: ACPI Table Protocol not available, skipping ACPI install\n"));
+    }
   }
 
   DEBUG ((DEBUG_INFO, "CryptoIndicatorTableDxe: ECIT installed with %d entries\n", Table->NumberOfEntries));

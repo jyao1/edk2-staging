@@ -62,5 +62,8 @@
   gEfiCertV2X509Sha384Guid                    ## CONSUMES  ## GUID  # Signature list type
   gEfiCertV2X509Sha512Guid                    ## CONSUMES  ## GUID  # Signature list type
 
+[Protocols]
+  gEfiAcpiTableProtocolGuid                  ## SOMETIMES_CONSUMES
+
 [Depex]
   TRUE
