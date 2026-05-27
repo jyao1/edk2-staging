@@ -419,6 +419,21 @@ If TpmPresent(platform):
 
 The digest extended into PCR[1] SHALL be computed over the exact bytes of the ECIT table (from offset 0 to Header.Length), ensuring consistency between the published table and the TPM measurement.
 
+### P13.4 Event Data Format is UEFI_HANDOFF_TABLE_POINTERS2
+
+```
+If TpmPresent(platform):
+  let event = EventLog.Entry(PCR1, EV_EFI_HANDOFF_TABLES2, ECIT_GUID).EventData,
+  event conforms to UEFI_HANDOFF_TABLE_POINTERS2:
+    event.TableDescriptionSize > 0
+    ∧ event.TableDescription is null-terminated ASCII
+    ∧ event.NumberOfTables == 1
+    ∧ event.TableEntry[0].VendorGuid == EFI_CRYPTO_INDICATOR_TABLE_GUID
+    ∧ event.TableEntry[0].VendorTable == ConfigurationTable(EFI_CRYPTO_INDICATOR_TABLE_GUID)
+```
+
+The TCG event data for the ECIT measurement SHALL be formatted as a `UEFI_HANDOFF_TABLE_POINTERS2` structure (defined in UEFI TCG Platform specification, `UefiTcgPlatform.h`). The structure SHALL contain exactly one table entry whose `VendorGuid` is `EFI_CRYPTO_INDICATOR_TABLE_GUID` and whose `VendorTable` pointer matches the ECIT table address exported via `InstallConfigurationTable`. This ensures that event log parsers can identify and correlate the measured ECIT table with the published configuration table.
+
 ---
 
 ## Summary of Property Categories
@@ -436,4 +451,4 @@ The digest extended into PCR[1] SHALL be computed over the exact bytes of the EC
 | Security | P10.1–P10.2 | Soundness and completeness |
 | Uniqueness | P11.1 | No duplicate standard feature entries |
 | ACPI Header | P12.1–P12.2 | OEM identification fields |
-| TCG Measurement | P13.1–P13.3 | TPM PCR1 measurement correctness |
+| TCG Measurement | P13.1–P13.4 | TPM PCR1 measurement correctness |

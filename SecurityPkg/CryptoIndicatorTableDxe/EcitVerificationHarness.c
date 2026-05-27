@@ -40,6 +40,7 @@ typedef uint64_t  UINTN;
 typedef void      VOID;
 typedef UINTN     RETURN_STATUS;
 typedef UINTN     EFI_STATUS;
+typedef uint64_t  EFI_PHYSICAL_ADDRESS;
 typedef void*     EFI_HANDLE;
 typedef void*     EFI_EVENT;
 
@@ -280,6 +281,9 @@ static UINT32 gMeasuredEventType = 0;
 static VOID  *gMeasuredData = NULL;
 static UINT64 gMeasuredDataSize = 0;
 static bool  gMeasurementAfterInstall = false;  // was InstallConfigTable already called?
+static UINT8  gMeasuredEventDataBuffer[256];
+static UINT8 *gMeasuredEventData = NULL;
+static UINT32 gMeasuredEventDataSize = 0;
 
 static EFI_STATUS StubInstallConfigurationTable(EFI_GUID *Guid, VOID *Table) {
   (void)Guid;
@@ -312,18 +316,22 @@ static EFI_ACPI_TABLE_PROTOCOL gStubAcpiProtocol = { StubInstallAcpiTable };
 // TCG2 Protocol stub
 // ============================================================================
 
-typedef struct {
-  UINT32 Size;
-  EFI_ACPI_DESCRIPTION_HEADER Header;  // reuse for the event structure
-  UINT32 NumberOfEvents;
-} EFI_TCG2_EVENT_HEADER;
+typedef UINT32 TCG_PCRINDEX;
+typedef UINT32 TCG_EVENTTYPE;
 
 typedef struct {
-  UINT32 Size;
-  UINT32 HeaderSize;
-  UINT16 HeaderVersion;
-  UINT32 PCRIndex;
-  UINT32 EventType;
+  UINT32        HeaderSize;
+  UINT16        HeaderVersion;
+  TCG_PCRINDEX  PCRIndex;
+  TCG_EVENTTYPE EventType;
+} EFI_TCG2_EVENT_HEADER;
+
+#define EFI_TCG2_EVENT_HEADER_VERSION  1
+
+typedef struct {
+  UINT32                 Size;
+  EFI_TCG2_EVENT_HEADER  Header;
+  UINT8                  Event[1];
 } EFI_TCG2_EVENT;
 
 typedef struct _EFI_TCG2_PROTOCOL {
@@ -335,6 +343,21 @@ typedef struct _EFI_TCG2_PROTOCOL {
     EFI_TCG2_EVENT *EfiTcgEvent);
 } EFI_TCG2_PROTOCOL;
 
+// EFI_CONFIGURATION_TABLE (from UefiSpec.h)
+typedef struct {
+  EFI_GUID  VendorGuid;
+  VOID      *VendorTable;
+} EFI_CONFIGURATION_TABLE;
+
+// UEFI_HANDOFF_TABLE_POINTERS2 (from UefiTcgPlatform.h)
+#define ECIT_HANDOFF_TABLE_DESC  "EfiCryptoIndicatorTable"
+typedef struct {
+  UINT8                    TableDescriptionSize;
+  UINT8                    TableDescription[sizeof(ECIT_HANDOFF_TABLE_DESC)];
+  UINT64                   NumberOfTables;
+  EFI_CONFIGURATION_TABLE  TableEntry[1];
+} ECIT_HANDOFF_TABLE_POINTERS2;
+
 static EFI_STATUS StubHashLogExtendEvent(
   EFI_TCG2_PROTOCOL *This,
   UINT64 Flags,
@@ -343,10 +366,17 @@ static EFI_STATUS StubHashLogExtendEvent(
   EFI_TCG2_EVENT *EfiTcgEvent) {
   (void)This; (void)Flags;
   gMeasurementCalled = true;
-  gMeasuredPcrIndex = EfiTcgEvent->PCRIndex;
-  gMeasuredEventType = EfiTcgEvent->EventType;
+  gMeasuredPcrIndex = EfiTcgEvent->Header.PCRIndex;
+  gMeasuredEventType = EfiTcgEvent->Header.EventType;
   gMeasuredData = (VOID*)(UINTN)DataToHash;
   gMeasuredDataSize = DataToHashLen;
+  gMeasuredEventDataSize = EfiTcgEvent->Size - (UINT32)(UINTN)((UINT8*)EfiTcgEvent->Event - (UINT8*)EfiTcgEvent);
+  if (gMeasuredEventDataSize <= sizeof(gMeasuredEventDataBuffer)) {
+    my_memcpy(gMeasuredEventDataBuffer, EfiTcgEvent->Event, gMeasuredEventDataSize);
+    gMeasuredEventData = gMeasuredEventDataBuffer;
+  } else {
+    gMeasuredEventData = NULL;
+  }
   // Track ordering: was InstallConfigurationTable already called?
   gMeasurementAfterInstall = (gCapturedTable != NULL);
   return EFI_SUCCESS;
@@ -1230,6 +1260,8 @@ static const EFI_CRYPTO_INDICATOR_TABLE *RunDriverWithTcg(void) {
   gMeasuredData = NULL;
   gMeasuredDataSize = 0;
   gMeasurementAfterInstall = false;
+  gMeasuredEventData = NULL;
+  gMeasuredEventDataSize = 0;
 
   EFI_STATUS Status = CryptoIndicatorTableDxeEntryPoint(ImageHandle, &SysTable);
   __CPROVER_assert(Status == EFI_SUCCESS,
@@ -1271,6 +1303,31 @@ void harness_P13_3(void) {
     "P13.3: Measured data pointer == table pointer");
   __CPROVER_assert(gMeasuredDataSize == T->Header.Length,
     "P13.3: Measured data size == table.Header.Length");
+}
+
+void harness_P13_4(void) {
+  // P13.4: Event data format is UEFI_HANDOFF_TABLE_POINTERS2
+  const EFI_CRYPTO_INDICATOR_TABLE *T = RunDriverWithTcg();
+  (void)T;
+  __CPROVER_assert(gMeasurementCalled,
+    "P13.4 precondition: measurement was called");
+  __CPROVER_assert(gMeasuredEventData != NULL,
+    "P13.4: Event data must be non-NULL");
+  __CPROVER_assert(gMeasuredEventDataSize >= sizeof(ECIT_HANDOFF_TABLE_POINTERS2),
+    "P13.4: Event data size >= sizeof(UEFI_HANDOFF_TABLE_POINTERS2)");
+
+  ECIT_HANDOFF_TABLE_POINTERS2 *Hp2 = (ECIT_HANDOFF_TABLE_POINTERS2 *)gMeasuredEventData;
+  __CPROVER_assert(Hp2->TableDescriptionSize > 0,
+    "P13.4: TableDescriptionSize > 0");
+  __CPROVER_assert(Hp2->TableDescriptionSize == sizeof(ECIT_HANDOFF_TABLE_DESC),
+    "P13.4: TableDescriptionSize matches description string size");
+  __CPROVER_assert(Hp2->NumberOfTables == 1,
+    "P13.4: NumberOfTables == 1");
+  __CPROVER_assert(my_memcmp_eq(&Hp2->TableEntry[0].VendorGuid,
+    &gEfiCryptoIndicatorTableGuid, sizeof(EFI_GUID)),
+    "P13.4: VendorGuid == EFI_CRYPTO_INDICATOR_TABLE_GUID");
+  __CPROVER_assert(Hp2->TableEntry[0].VendorTable == gCapturedTable,
+    "P13.4: VendorTable == ConfigurationTable pointer");
 }
 
 // ============================================================================
@@ -1316,6 +1373,7 @@ void harness_all(void) {
   harness_P13_1();
   harness_P13_2();
   harness_P13_3();
+  harness_P13_4();
 }
 
 int main(void) {
