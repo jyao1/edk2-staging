@@ -34,6 +34,8 @@
   DxeImageVerificationLib.h
   ContentValidation.c
   ContentValidation.h
+  PeImageHash.c
+  PeImageHash.h
   Measurement.c
 
 [Packages]

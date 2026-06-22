@@ -39,6 +39,8 @@
 [Sources]
   Tcg2Dxe.c
   MeasureBootPeCoff.c
+  PeImageHash.c
+  PeImageHash.h
 
 [Packages]
   MdePkg/MdePkg.dec

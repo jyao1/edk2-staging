@@ -1,0 +1,45 @@
+## @file
+# GoogleTest for HashPeImage() Authenticode image hashing in DxeImageVerificationLib.
+# Asserts the exact image digest of a synthetic PE32+ image, so the digest is
+# proven unchanged across refactors of the hashing traversal.
+#
+# Copyright (c) 2026, Intel Corporation. All rights reserved.<BR>
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = DxeImageVerificationLibHashGoogleTest
+  FILE_GUID                      = 2C7E9A1B-3D4F-5A6B-7C8D-9E0F1A2B3C4D
+  MODULE_TYPE                    = HOST_APPLICATION
+  VERSION_STRING                 = 1.0
+
+[Sources]
+  DxeImageVerificationLibHashGoogleTest.cpp
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  SecurityPkg/SecurityPkg.dec
+  UnitTestFrameworkPkg/UnitTestFrameworkPkg.dec
+  CryptoPkg/CryptoPkg.dec
+
+[LibraryClasses]
+  DxeImageVerificationLib
+  GoogleTestLib
+  BaseCryptLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  DebugLib
+
+[Guids]
+  gEfiGlobalVariableGuid
+  gEfiImageSecurityDatabaseGuid
+  gEfiCertSha256Guid
+  gEfiCertSha384Guid
+  gEfiCertSha512Guid
+  gEfiCertX509Guid
+  gEfiCertX509Sha256Guid
+  gEfiCertX509Sha384Guid
+  gEfiCertX509Sha512Guid
+  gEfiCertPkcs7Guid
