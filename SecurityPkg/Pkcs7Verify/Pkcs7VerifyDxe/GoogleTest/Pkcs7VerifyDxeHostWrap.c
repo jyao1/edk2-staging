@@ -13,4 +13,5 @@
 
 #include <Uefi.h>
 
+#include "../ContentValidation.c"
 #include "../Pkcs7VerifyDxe.c"

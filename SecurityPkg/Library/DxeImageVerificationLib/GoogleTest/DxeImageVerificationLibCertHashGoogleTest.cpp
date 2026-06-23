@@ -51,22 +51,50 @@ extern "C" {
     );
 
   BOOLEAN
-  IsCertAllowedByDbx (
-    IN UINT8  *Certificate,
-    IN UINTN  CertSize,
-    IN UINT8  *DbxData,
-    IN UINTN  DbxDataSize
-    );
-
-  BOOLEAN
-  IsAllowedByDb (
-    IN UINT8  *AuthData,
-    IN UINTN  AuthDataSize
+  IsCertRevokedByDbxList (
+    IN UINT8               *Certificate,
+    IN UINTN               CertSize,
+    IN EFI_SIGNATURE_LIST  *DbxList,
+    IN UINTN               DbxListSize
     );
 
   //
-  // PE-image digest globals consumed by IsAllowedByDb()/IsCertAllowedByDbx().
-  // IsAllowedByDb passes these to AuthenticodeVerify() as the image hash.
+  // The shared db/dbx decision entry point (ContentValidation.c), exercised by the
+  // trust-anchor-relative dbx tests. ContentValidationVerifyByPeImageHash verifies
+  // the PE image digest with AuthenticodeVerify(); the measurement hook is unused
+  // here (NULL).
+  //
+  typedef enum {
+    ContentValidationVerifyByPeImageHash,
+    ContentValidationVerifyByHash,
+    ContentValidationVerifyByData
+  } CONTENT_VALIDATION_VERIFY_TYPE;
+
+  typedef
+  VOID
+  (EFIAPI *CONTENT_VALIDATION_SECURE_BOOT_HOOK) (
+    IN CHAR16    *VariableName,
+    IN EFI_GUID  *VendorGuid,
+    IN UINTN     DataSize,
+    IN VOID      *Data
+    );
+
+  EFI_STATUS
+  Pkcs7VerifyContent (
+    IN UINT8                             *SignedData,
+    IN UINTN                             SignedDataSize,
+    IN UINT8                             *In,
+    IN UINTN                             InSize,
+    IN CONTENT_VALIDATION_VERIFY_TYPE      VerifyType,
+    IN EFI_SIGNATURE_LIST                **AllowedDb,
+    IN EFI_SIGNATURE_LIST                **RevokedDb       OPTIONAL,
+    IN CONTENT_VALIDATION_SECURE_BOOT_HOOK  SecureBootHook       OPTIONAL
+    );
+
+  //
+  // PE-image digest globals: the trust tests set these as the image hash that
+  // Pkcs7VerifyContent() (ContentValidationVerifyByPeImageHash) verifies the
+  // signature against via AuthenticodeVerify().
   //
   extern UINT8  mImageDigest[];
   extern UINTN  mImageDigestSize;
@@ -1597,10 +1625,11 @@ TEST_F (CertHashSearchTest, CertHashNotFoundInDbx) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// IsCertAllowedByDbx - dbx certificate-hash revocation decision
+// IsCertRevokedByDbxList - dbx certificate-hash revocation decision
 //
-// This is the dbx re-check IsAllowedByDb() performs once a db entry grants
-// trust: a certificate is allowed only if its TBS hash is not in dbx.
+// This is the shared dbx re-check Pkcs7VerifyContent() performs once a db
+// entry grants trust: a certificate is revoked if its TBS hash is in dbx
+// (fail-safe on search error).
 ///////////////////////////////////////////////////////////////////////////////
 
 TEST_F (CertHashSearchTest, CertRevokedByDbx_V1_Sha256) {
@@ -1619,8 +1648,8 @@ TEST_F (CertHashSearchTest, CertRevokedByDbx_V1_Sha256) {
   //
   // The certificate TBS hash is in dbx, so it is revoked (not allowed).
   //
-  EXPECT_FALSE (
-    IsCertAllowedByDbx ((UINT8 *)mTestCert, sizeof (mTestCert), SigList, SigListSize)
+  EXPECT_TRUE (
+    IsCertRevokedByDbxList ((UINT8 *)mTestCert, sizeof (mTestCert), (EFI_SIGNATURE_LIST *)SigList, SigListSize)
     );
 
   FreePool (SigList);
@@ -1639,8 +1668,8 @@ TEST_F (CertHashSearchTest, CertRevokedByDbx_V2_Sha384) {
                            );
   ASSERT_NE (SigList, (UINT8 *)NULL);
 
-  EXPECT_FALSE (
-    IsCertAllowedByDbx ((UINT8 *)mTestCert, sizeof (mTestCert), SigList, SigListSize)
+  EXPECT_TRUE (
+    IsCertRevokedByDbxList ((UINT8 *)mTestCert, sizeof (mTestCert), (EFI_SIGNATURE_LIST *)SigList, SigListSize)
     );
 
   FreePool (SigList);
@@ -1665,8 +1694,8 @@ TEST_F (CertHashSearchTest, CertAllowedWhenDbxDoesNotMatch) {
                            );
   ASSERT_NE (SigList, (UINT8 *)NULL);
 
-  EXPECT_TRUE (
-    IsCertAllowedByDbx ((UINT8 *)mTestCert, sizeof (mTestCert), SigList, SigListSize)
+  EXPECT_FALSE (
+    IsCertRevokedByDbxList ((UINT8 *)mTestCert, sizeof (mTestCert), (EFI_SIGNATURE_LIST *)SigList, SigListSize)
     );
 
   FreePool (SigList);
@@ -1678,22 +1707,24 @@ TEST_F (CertHashSearchTest, CertAllowedWhenDbxAbsent) {
   //
   // No dbx present (NULL) means nothing is revoked.
   //
-  EXPECT_TRUE (
-    IsCertAllowedByDbx ((UINT8 *)mTestCert, sizeof (mTestCert), NULL, 0)
+  EXPECT_FALSE (
+    IsCertRevokedByDbxList ((UINT8 *)mTestCert, sizeof (mTestCert), (EFI_SIGNATURE_LIST *)NULL, 0)
     );
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// IsAllowedByDb() trust-anchor-relative dbx evaluation (UEFI Spec 32.5.3.3).
+// Pkcs7VerifyContent() trust-anchor-relative dbx evaluation (UEFI Spec 32.5.3.3).
 //
 // Once a signature verifies up to a certificate present in db (the trust
 // anchor), dbx is evaluated ONLY against that anchor and the certificates below
 // it (toward the leaf signer, inclusive). A certificate above the anchor
 // (closer to the root) is ignored even if its hash is present in dbx.
 //
-// Driven end to end through IsAllowedByDb() with gRT->GetVariable mocked to
-// supply db then dbx. The image is the 3-level Authenticode chain mTaDbxAuth3
-// (root -> intermediate -> leaf), whose image hash is mTaDbxImageHash.
+// Driven through the shared Pkcs7VerifyContent() against the PE image digest
+// (ContentValidationVerifyByPeImageHash), with db/dbx supplied directly as
+// NULL-terminated EFI_SIGNATURE_LIST arrays. The image is the 3-level
+// Authenticode chain mTaDbxAuth3 (root -> intermediate -> leaf), whose image
+// hash is mTaDbxImageHash.
 ///////////////////////////////////////////////////////////////////////////////
 class TrustAnchorDbxTest : public CertHashSearchTest {
 protected:
@@ -1758,53 +1789,21 @@ protected:
     return (UINT8 *)Sl;
   }
 
-  //
-  // Arrange gRT->GetVariable: db queried for size then data; dbx queried for
-  // size then data. Each variable read is size-query (EFI_BUFFER_TOO_SMALL)
-  // followed by data fetch (EFI_SUCCESS).
-  //
-  void
-  ExpectDbThenDbx (
-    UINT8  *Db,
-    UINTN  DbSize,
-    UINT8  *Dbx,
-    UINTN  DbxSize
-    )
-  {
-    EXPECT_CALL (RtServicesMock, gRT_GetVariable)
-      .WillOnce (DoAll (SetArgPointee<3>(DbSize), Return (EFI_BUFFER_TOO_SMALL)))
-      .WillOnce (DoAll (SetArgPointee<3>(DbSize), SetArgBuffer<4>(Db, DbSize), Return (EFI_SUCCESS)))
-      .WillOnce (DoAll (SetArgPointee<3>(DbxSize), Return (EFI_BUFFER_TOO_SMALL)))
-      .WillOnce (DoAll (SetArgPointee<3>(DbxSize), SetArgBuffer<4>(Dbx, DbxSize), Return (EFI_SUCCESS)));
-  }
-
-  //
-  // db supplied, dbx absent (EFI_NOT_FOUND on the size query).
-  //
-  void
-  ExpectDbNoDbx (
-    UINT8  *Db,
-    UINTN  DbSize
-    )
-  {
-    EXPECT_CALL (RtServicesMock, gRT_GetVariable)
-      .WillOnce (DoAll (SetArgPointee<3>(DbSize), Return (EFI_BUFFER_TOO_SMALL)))
-      .WillOnce (DoAll (SetArgPointee<3>(DbSize), SetArgBuffer<4>(Db, DbSize), Return (EFI_SUCCESS)))
-      .WillOnce (Return (EFI_NOT_FOUND));
-  }
 };
 
 //
 // Baselines: each chain certificate can serve as the trust anchor when its hash
-// is in db and dbx is absent.
+// is in db and dbx is absent. Pkcs7VerifyContent() takes db/dbx as
+// NULL-terminated EFI_SIGNATURE_LIST arrays (the handler reads the variables
+// once and passes them in), so the tests build single-entry arrays directly.
 //
 TEST_F (TrustAnchorDbxTest, LeafInDb_NoDbx_Allowed) {
   ASSERT_TRUE (mSetUpDone);
   UINTN  DbSize = 0;
   UINT8  *Db    = BuildHashList (mLeafTbs, &DbSize);
   ASSERT_NE (Db, (UINT8 *)NULL);
-  ExpectDbNoDbx (Db, DbSize);
-  EXPECT_TRUE (IsAllowedByDb ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3)));
+  EFI_SIGNATURE_LIST  *AllowedDb[] = { (EFI_SIGNATURE_LIST *)Db, NULL };
+  EXPECT_TRUE ((Pkcs7VerifyContent ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3), mImageDigest, mImageDigestSize, ContentValidationVerifyByPeImageHash, AllowedDb, NULL, NULL) == EFI_SUCCESS));
   FreePool (Db);
 }
 
@@ -1813,8 +1812,8 @@ TEST_F (TrustAnchorDbxTest, IntermediateInDb_NoDbx_Allowed) {
   UINTN  DbSize = 0;
   UINT8  *Db    = BuildHashList (mInterTbs, &DbSize);
   ASSERT_NE (Db, (UINT8 *)NULL);
-  ExpectDbNoDbx (Db, DbSize);
-  EXPECT_TRUE (IsAllowedByDb ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3)));
+  EFI_SIGNATURE_LIST  *AllowedDb[] = { (EFI_SIGNATURE_LIST *)Db, NULL };
+  EXPECT_TRUE ((Pkcs7VerifyContent ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3), mImageDigest, mImageDigestSize, ContentValidationVerifyByPeImageHash, AllowedDb, NULL, NULL) == EFI_SUCCESS));
   FreePool (Db);
 }
 
@@ -1823,8 +1822,8 @@ TEST_F (TrustAnchorDbxTest, RootInDb_NoDbx_Allowed) {
   UINTN  DbSize = 0;
   UINT8  *Db    = BuildHashList (mRootTbs, &DbSize);
   ASSERT_NE (Db, (UINT8 *)NULL);
-  ExpectDbNoDbx (Db, DbSize);
-  EXPECT_TRUE (IsAllowedByDb ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3)));
+  EFI_SIGNATURE_LIST  *AllowedDb[] = { (EFI_SIGNATURE_LIST *)Db, NULL };
+  EXPECT_TRUE ((Pkcs7VerifyContent ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3), mImageDigest, mImageDigestSize, ContentValidationVerifyByPeImageHash, AllowedDb, NULL, NULL) == EFI_SUCCESS));
   FreePool (Db);
 }
 
@@ -1839,8 +1838,9 @@ TEST_F (TrustAnchorDbxTest, IntermediateInDb_RootInDbx_Allowed) {
   UINT8  *Dbx = BuildHashList (mRootTbs, &DbxSize);
   ASSERT_NE (Db, (UINT8 *)NULL);
   ASSERT_NE (Dbx, (UINT8 *)NULL);
-  ExpectDbThenDbx (Db, DbSize, Dbx, DbxSize);
-  EXPECT_TRUE (IsAllowedByDb ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3)));
+  EFI_SIGNATURE_LIST  *AllowedDb[] = { (EFI_SIGNATURE_LIST *)Db, NULL };
+  EFI_SIGNATURE_LIST  *RevokedDb[] = { (EFI_SIGNATURE_LIST *)Dbx, NULL };
+  EXPECT_TRUE ((Pkcs7VerifyContent ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3), mImageDigest, mImageDigestSize, ContentValidationVerifyByPeImageHash, AllowedDb, RevokedDb, NULL) == EFI_SUCCESS));
   FreePool (Db);
   FreePool (Dbx);
 }
@@ -1856,8 +1856,9 @@ TEST_F (TrustAnchorDbxTest, RootInDb_IntermediateInDbx_Rejected) {
   UINT8  *Dbx = BuildHashList (mInterTbs, &DbxSize);
   ASSERT_NE (Db, (UINT8 *)NULL);
   ASSERT_NE (Dbx, (UINT8 *)NULL);
-  ExpectDbThenDbx (Db, DbSize, Dbx, DbxSize);
-  EXPECT_FALSE (IsAllowedByDb ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3)));
+  EFI_SIGNATURE_LIST  *AllowedDb[] = { (EFI_SIGNATURE_LIST *)Db, NULL };
+  EFI_SIGNATURE_LIST  *RevokedDb[] = { (EFI_SIGNATURE_LIST *)Dbx, NULL };
+  EXPECT_FALSE ((Pkcs7VerifyContent ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3), mImageDigest, mImageDigestSize, ContentValidationVerifyByPeImageHash, AllowedDb, RevokedDb, NULL) == EFI_SUCCESS));
   FreePool (Db);
   FreePool (Dbx);
 }
@@ -1872,8 +1873,9 @@ TEST_F (TrustAnchorDbxTest, LeafInDb_LeafInDbx_Rejected) {
   UINT8  *Dbx = BuildHashList (mLeafTbs, &DbxSize);
   ASSERT_NE (Db, (UINT8 *)NULL);
   ASSERT_NE (Dbx, (UINT8 *)NULL);
-  ExpectDbThenDbx (Db, DbSize, Dbx, DbxSize);
-  EXPECT_FALSE (IsAllowedByDb ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3)));
+  EFI_SIGNATURE_LIST  *AllowedDb[] = { (EFI_SIGNATURE_LIST *)Db, NULL };
+  EFI_SIGNATURE_LIST  *RevokedDb[] = { (EFI_SIGNATURE_LIST *)Dbx, NULL };
+  EXPECT_FALSE ((Pkcs7VerifyContent ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3), mImageDigest, mImageDigestSize, ContentValidationVerifyByPeImageHash, AllowedDb, RevokedDb, NULL) == EFI_SUCCESS));
   FreePool (Db);
   FreePool (Dbx);
 }
@@ -1889,8 +1891,9 @@ TEST_F (TrustAnchorDbxTest, LeafInDb_RootInDbxAboveAnchor_Allowed) {
   UINT8  *Dbx = BuildHashList (mRootTbs, &DbxSize);
   ASSERT_NE (Db, (UINT8 *)NULL);
   ASSERT_NE (Dbx, (UINT8 *)NULL);
-  ExpectDbThenDbx (Db, DbSize, Dbx, DbxSize);
-  EXPECT_TRUE (IsAllowedByDb ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3)));
+  EFI_SIGNATURE_LIST  *AllowedDb[] = { (EFI_SIGNATURE_LIST *)Db, NULL };
+  EFI_SIGNATURE_LIST  *RevokedDb[] = { (EFI_SIGNATURE_LIST *)Dbx, NULL };
+  EXPECT_TRUE ((Pkcs7VerifyContent ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3), mImageDigest, mImageDigestSize, ContentValidationVerifyByPeImageHash, AllowedDb, RevokedDb, NULL) == EFI_SUCCESS));
   FreePool (Db);
   FreePool (Dbx);
 }
@@ -1905,8 +1908,9 @@ TEST_F (TrustAnchorDbxTest, RootInDb_LeafInDbx_Rejected) {
   UINT8  *Dbx = BuildHashList (mLeafTbs, &DbxSize);
   ASSERT_NE (Db, (UINT8 *)NULL);
   ASSERT_NE (Dbx, (UINT8 *)NULL);
-  ExpectDbThenDbx (Db, DbSize, Dbx, DbxSize);
-  EXPECT_FALSE (IsAllowedByDb ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3)));
+  EFI_SIGNATURE_LIST  *AllowedDb[] = { (EFI_SIGNATURE_LIST *)Db, NULL };
+  EFI_SIGNATURE_LIST  *RevokedDb[] = { (EFI_SIGNATURE_LIST *)Dbx, NULL };
+  EXPECT_FALSE ((Pkcs7VerifyContent ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3), mImageDigest, mImageDigestSize, ContentValidationVerifyByPeImageHash, AllowedDb, RevokedDb, NULL) == EFI_SUCCESS));
   FreePool (Db);
   FreePool (Dbx);
 }
@@ -1923,8 +1927,9 @@ TEST_F (TrustAnchorDbxTest, LeafInDb_UnrelatedInDbx_Allowed) {
   UINT8  *Dbx = BuildHashList (Unrelated, &DbxSize);
   ASSERT_NE (Db, (UINT8 *)NULL);
   ASSERT_NE (Dbx, (UINT8 *)NULL);
-  ExpectDbThenDbx (Db, DbSize, Dbx, DbxSize);
-  EXPECT_TRUE (IsAllowedByDb ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3)));
+  EFI_SIGNATURE_LIST  *AllowedDb[] = { (EFI_SIGNATURE_LIST *)Db, NULL };
+  EFI_SIGNATURE_LIST  *RevokedDb[] = { (EFI_SIGNATURE_LIST *)Dbx, NULL };
+  EXPECT_TRUE ((Pkcs7VerifyContent ((UINT8 *)mTaDbxAuth3, sizeof (mTaDbxAuth3), mImageDigest, mImageDigestSize, ContentValidationVerifyByPeImageHash, AllowedDb, RevokedDb, NULL) == EFI_SUCCESS));
   FreePool (Db);
   FreePool (Dbx);
 }

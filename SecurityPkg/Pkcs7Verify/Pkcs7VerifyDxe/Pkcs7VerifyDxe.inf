@@ -28,6 +28,8 @@
 
 [Sources.common]
   Pkcs7VerifyDxe.c
+  ContentValidation.c
+  ContentValidation.h
 
 [Packages]
   MdePkg/MdePkg.dec
@@ -48,6 +50,7 @@
   gEfiPkcs7VerifyProtocolGuid   ## PRODUCES
 
 [Guids]
+  gEfiImageSecurityDatabaseGuid ## SOMETIMES_CONSUMES    ## GUID     # Measured db vendor GUID (shared ContentValidation.c).
   gEfiCertX509Guid              ## SOMETIMES_CONSUMES    ## GUID     # Unique ID for the type of the signature.
   gEfiCertV2X509Guid            ## SOMETIMES_CONSUMES    ## GUID     # Unique ID for the type of the signature.
   gEfiCertSha256Guid            ## SOMETIMES_CONSUMES    ## GUID     # Unique ID for the type of the signature.

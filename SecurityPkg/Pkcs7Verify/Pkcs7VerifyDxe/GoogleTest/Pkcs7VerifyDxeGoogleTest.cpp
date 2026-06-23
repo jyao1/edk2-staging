@@ -32,57 +32,9 @@ extern "C" {
   #include <Protocol/Pkcs7Verify.h>
 
   //
-  // The following helpers are non-static functions in Pkcs7VerifyDxe.c.
-  // They are not declared in any header, so forward-declare them here.
+  // The protocol entry points (Pkcs7VerifyDxe.c), exercised directly by the
+  // return-code tests below.
   //
-  BOOLEAN
-  IsContentHashRevokedByHash (
-    IN  UINT8               *Hash,
-    IN  UINTN               HashSize,
-    IN  EFI_SIGNATURE_LIST  **RevokedDb
-    );
-
-  BOOLEAN
-  IsContentHashRevoked (
-    IN  UINT8               *Content,
-    IN  UINTN               ContentSize,
-    IN  EFI_SIGNATURE_LIST  **RevokedDb
-    );
-
-  BOOLEAN
-  IsCertHashRevoked (
-    IN  UINT8               *Certificate,
-    IN  UINTN               CertSize,
-    IN  EFI_SIGNATURE_LIST  **RevokedDb
-    );
-
-  BOOLEAN
-  IsCertTbsHashInSigList (
-    IN  UINT8               *Certificate,
-    IN  UINTN               CertSize,
-    IN  EFI_SIGNATURE_LIST  *SigList
-    );
-
-  EFI_STATUS
-  P7CheckTrust (
-    IN UINT8               *SignedData,
-    IN UINTN               SignedDataSize,
-    IN UINT8               *InData,
-    IN UINTN               InDataSize,
-    IN EFI_SIGNATURE_LIST  **AllowedDb,
-    IN EFI_SIGNATURE_LIST  **RevokedDb      OPTIONAL
-    );
-
-  EFI_STATUS
-  P7CheckTrustByHash (
-    IN UINT8               *SignedData,
-    IN UINTN               SignedDataSize,
-    IN UINT8               *InHash,
-    IN UINTN               InHashSize,
-    IN EFI_SIGNATURE_LIST  **AllowedDb,
-    IN EFI_SIGNATURE_LIST  **RevokedDb      OPTIONAL
-    );
-
   EFI_STATUS
   EFIAPI
   VerifyBuffer (
@@ -111,6 +63,205 @@ extern "C" {
     IN EFI_SIGNATURE_LIST         **TimeStampDb     OPTIONAL
     );
 
+  //
+  // The shared db/dbx decision entry point (ContentValidation.c), exercised
+  // directly by the trust tests below. The content form
+  // (ContentValidationVerifyByData) verifies with Pkcs7Verify() against InData;
+  // the measurement hook is unused here (NULL). It is not declared in any header
+  // consumed by the test, so forward-declare it (and its types) here.
+  //
+  typedef enum {
+    ContentValidationVerifyByPeImageHash,
+    ContentValidationVerifyByHash,
+    ContentValidationVerifyByData
+  } CONTENT_VALIDATION_VERIFY_TYPE;
+
+  typedef
+  VOID
+  (EFIAPI *CONTENT_VALIDATION_SECURE_BOOT_HOOK) (
+    IN CHAR16    *VariableName,
+    IN EFI_GUID  *VendorGuid,
+    IN UINTN     DataSize,
+    IN VOID      *Data
+    );
+
+  EFI_STATUS
+  Pkcs7VerifyContent (
+    IN UINT8                             *SignedData,
+    IN UINTN                             SignedDataSize,
+    IN UINT8                             *In,
+    IN UINTN                             InSize,
+    IN CONTENT_VALIDATION_VERIFY_TYPE      VerifyType,
+    IN EFI_SIGNATURE_LIST                **AllowedDb,
+    IN EFI_SIGNATURE_LIST                **RevokedDb       OPTIONAL,
+    IN CONTENT_VALIDATION_SECURE_BOOT_HOOK  SecureBootHook       OPTIONAL
+    );
+
+  //
+  // Shared cert/content-hash matching primitives (ContentValidation.c), exercised
+  // directly by the revocation-database tests below.
+  //
+  EFI_STATUS
+  IsContentHashFoundInSigList (
+    IN  UINT8               *Hash,
+    IN  UINTN               HashSize,
+    IN  EFI_SIGNATURE_LIST  *SignatureList,
+    OUT BOOLEAN             *IsFound,
+    OUT EFI_SIGNATURE_DATA  **MatchedSigData OPTIONAL
+    );
+
+  EFI_STATUS
+  IsCertHashFoundInSigList (
+    IN  UINT8               *Certificate,
+    IN  UINTN               CertSize,
+    IN  EFI_SIGNATURE_LIST  *SignatureList,
+    IN  UINTN               SignatureListSize,
+    OUT BOOLEAN             *IsFound,
+    OUT EFI_SIGNATURE_DATA  **MatchedSigData OPTIONAL
+    );
+
+  BOOLEAN
+  IsCertRevokedByDbxList (
+    IN UINT8               *Certificate,
+    IN UINTN               CertSize,
+    IN EFI_SIGNATURE_LIST  *DbxList,
+    IN UINTN               DbxListSize
+    );
+
+  BOOLEAN
+  ContentValidationHashData (
+    IN  UINTN  HashSize,
+    IN  UINT8  *Data,
+    IN  UINTN  DataSize,
+    OUT UINT8  *Digest
+    );
+}
+
+//
+// These revocation-database tests originally exercised module-local wrappers in
+// Pkcs7VerifyDxe.c that iterated a NULL-terminated RevokedDb array over the
+// shared single-list primitives. The wrappers were removed once all production
+// verification routed through Pkcs7VerifyContent(); the array-iteration is
+// reproduced here as test-local helpers so the tests keep validating the shared
+// IsContentHashFoundInSigList()/IsCertHashFoundInSigList()/IsCertRevokedByDbxList()
+// primitives directly, including the V1/V2 layouts and multi-algorithm sizes.
+//
+#define TEST_MAX_DIGEST_SIZE  SHA512_DIGEST_SIZE
+
+static BOOLEAN
+IsContentHashRevokedByHash (
+  IN  UINT8               *Hash,
+  IN  UINTN               HashSize,
+  IN  EFI_SIGNATURE_LIST  **RevokedDb
+  )
+{
+  UINTN       Index;
+  BOOLEAN     IsFound;
+  EFI_STATUS  Status;
+
+  if (RevokedDb == NULL) {
+    return FALSE;
+  }
+
+  for (Index = 0; RevokedDb[Index] != NULL; Index++) {
+    IsFound = FALSE;
+    Status  = IsContentHashFoundInSigList (Hash, HashSize, RevokedDb[Index], &IsFound, NULL);
+    if (!EFI_ERROR (Status) && IsFound) {
+      return TRUE;
+    }
+  }
+
+  return FALSE;
+}
+
+static BOOLEAN
+IsContentHashRevoked (
+  IN  UINT8               *Content,
+  IN  UINTN               ContentSize,
+  IN  EFI_SIGNATURE_LIST  **RevokedDb
+  )
+{
+  UINTN               Index;
+  UINTN               HashSize;
+  UINT8               HashVal[TEST_MAX_DIGEST_SIZE];
+  BOOLEAN             IsFound;
+  EFI_STATUS          Status;
+  EFI_SIGNATURE_LIST  *SigList;
+
+  if (RevokedDb == NULL) {
+    return FALSE;
+  }
+
+  for (Index = 0; RevokedDb[Index] != NULL; Index++) {
+    SigList = RevokedDb[Index];
+
+    if (CompareGuid (&SigList->SignatureType, &gEfiCertSha256Guid) ||
+        CompareGuid (&SigList->SignatureType, &gEfiCertV2Sha256Guid)) {
+      HashSize = SHA256_DIGEST_SIZE;
+    } else if (CompareGuid (&SigList->SignatureType, &gEfiCertSha384Guid) ||
+               CompareGuid (&SigList->SignatureType, &gEfiCertV2Sha384Guid)) {
+      HashSize = SHA384_DIGEST_SIZE;
+    } else if (CompareGuid (&SigList->SignatureType, &gEfiCertSha512Guid) ||
+               CompareGuid (&SigList->SignatureType, &gEfiCertV2Sha512Guid)) {
+      HashSize = SHA512_DIGEST_SIZE;
+    } else {
+      continue;
+    }
+
+    if (!ContentValidationHashData (HashSize, Content, ContentSize, HashVal)) {
+      continue;
+    }
+
+    IsFound = FALSE;
+    Status  = IsContentHashFoundInSigList (HashVal, HashSize, SigList, &IsFound, NULL);
+    if (!EFI_ERROR (Status) && IsFound) {
+      return TRUE;
+    }
+  }
+
+  return FALSE;
+}
+
+static BOOLEAN
+IsCertHashRevoked (
+  IN  UINT8               *Certificate,
+  IN  UINTN               CertSize,
+  IN  EFI_SIGNATURE_LIST  **RevokedDb
+  )
+{
+  UINTN  Index;
+
+  if (RevokedDb == NULL) {
+    return FALSE;
+  }
+
+  for (Index = 0; RevokedDb[Index] != NULL; Index++) {
+    if (IsCertRevokedByDbxList (Certificate, CertSize, RevokedDb[Index], RevokedDb[Index]->SignatureListSize)) {
+      return TRUE;
+    }
+  }
+
+  return FALSE;
+}
+
+static BOOLEAN
+IsCertTbsHashInSigList (
+  IN  UINT8               *Certificate,
+  IN  UINTN               CertSize,
+  IN  EFI_SIGNATURE_LIST  *SigList
+  )
+{
+  BOOLEAN     IsFound;
+  EFI_STATUS  Status;
+
+  if ((Certificate == NULL) || (SigList == NULL)) {
+    return FALSE;
+  }
+
+  IsFound = FALSE;
+  Status  = IsCertHashFoundInSigList (Certificate, CertSize, SigList, SigList->SignatureListSize, &IsFound, NULL);
+
+  return (BOOLEAN)(!EFI_ERROR (Status) && IsFound);
 }
 
 #define SHA256_DIGEST_SIZE  32
@@ -1376,7 +1527,8 @@ TEST_F (Pkcs7VerifyRevokeTest, TbsHashInSigList_NonHashTypeIgnored) {
 //
 // Sign content at run time with the test key/cert, then confirm the signer is
 // trusted via a db that contains only the TBS-hash of the signing certificate
-// (no full certificate). This mirrors DxeImageVerificationLib IsAllowedByDb.
+// (no full certificate). This mirrors the DxeImageVerificationLib image path,
+// which drives the same shared Pkcs7VerifyContent() decision.
 ///////////////////////////////////////////////////////////////////////////////
 
 //
@@ -1394,12 +1546,14 @@ TEST_F (Pkcs7VerifyRevokeTest, AllowedByCertHash_V1_Sha256) {
   ASSERT_NE (List, (EFI_SIGNATURE_LIST *)NULL);
   EFI_SIGNATURE_LIST  *Db[] = { List, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7SignedAttached,
                          sizeof (mP7SignedAttached),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
+                         NULL,
                          NULL
                          );
 
@@ -1419,12 +1573,14 @@ TEST_F (Pkcs7VerifyRevokeTest, AllowedByCertHash_V2_Sha256) {
   ASSERT_NE (List, (EFI_SIGNATURE_LIST *)NULL);
   EFI_SIGNATURE_LIST  *Db[] = { List, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7SignedAttached,
                          sizeof (mP7SignedAttached),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
+                         NULL,
                          NULL
                          );
 
@@ -1444,12 +1600,14 @@ TEST_F (Pkcs7VerifyRevokeTest, AllowedByCertHash_Sha384) {
   ASSERT_NE (List, (EFI_SIGNATURE_LIST *)NULL);
   EFI_SIGNATURE_LIST  *Db[] = { List, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7SignedAttached,
                          sizeof (mP7SignedAttached),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
+                         NULL,
                          NULL
                          );
 
@@ -1474,12 +1632,14 @@ TEST_F (Pkcs7VerifyRevokeTest, NotAllowedByWrongCertHash) {
   ASSERT_NE (List, (EFI_SIGNATURE_LIST *)NULL);
   EFI_SIGNATURE_LIST  *Db[] = { List, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7SignedAttached,
                          sizeof (mP7SignedAttached),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
+                         NULL,
                          NULL
                          );
 
@@ -1506,12 +1666,14 @@ TEST_F (Pkcs7VerifyRevokeTest, CertHashMatchesButSignatureOverWrongData) {
 
   UINT8  OtherData[] = "completely different data";
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7SignedAttached,
                          sizeof (mP7SignedAttached),
                          OtherData,
                          sizeof (OtherData),
+                         ContentValidationVerifyByData,
                          Db,
+                         NULL,
                          NULL
                          );
 
@@ -1556,13 +1718,15 @@ TEST_F (Pkcs7VerifyRevokeTest, AnchorLeaf_LeafInDbx_Rejected) {
   ASSERT_NE (DbxList, (EFI_SIGNATURE_LIST *)NULL);
   EFI_SIGNATURE_LIST  *Dbx[] = { DbxList, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7SignedChain,
                          sizeof (mP7SignedChain),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
-                         Dbx
+                         Dbx,
+                         NULL
                          );
 
   EXPECT_NE (Status, EFI_SUCCESS);
@@ -1598,13 +1762,15 @@ TEST_F (Pkcs7VerifyRevokeTest, AnchorLeaf_RootInDbxAboveAnchor_Allowed) {
   ASSERT_NE (DbxList, (EFI_SIGNATURE_LIST *)NULL);
   EFI_SIGNATURE_LIST  *Dbx[] = { DbxList, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7SignedChain,
                          sizeof (mP7SignedChain),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
-                         Dbx
+                         Dbx,
+                         NULL
                          );
 
   EXPECT_EQ (Status, EFI_SUCCESS);
@@ -1634,12 +1800,14 @@ TEST_F (Pkcs7VerifyRevokeTest, Chain3_LeafInDbAllowsSigner) {
   ASSERT_NE (List, (EFI_SIGNATURE_LIST *)NULL);
   EFI_SIGNATURE_LIST  *Db[] = { List, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7Signed3Chain,
                          sizeof (mP7Signed3Chain),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
+                         NULL,
                          NULL
                          );
 
@@ -1663,12 +1831,14 @@ TEST_F (Pkcs7VerifyRevokeTest, Chain3_IntermediateInDbAllowsSigner) {
   ASSERT_NE (List, (EFI_SIGNATURE_LIST *)NULL);
   EFI_SIGNATURE_LIST  *Db[] = { List, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7Signed3Chain,
                          sizeof (mP7Signed3Chain),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
+                         NULL,
                          NULL
                          );
 
@@ -1692,12 +1862,14 @@ TEST_F (Pkcs7VerifyRevokeTest, Chain3_RootInDbAllowsSigner) {
   ASSERT_NE (List, (EFI_SIGNATURE_LIST *)NULL);
   EFI_SIGNATURE_LIST  *Db[] = { List, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7Signed3Chain,
                          sizeof (mP7Signed3Chain),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
+                         NULL,
                          NULL
                          );
 
@@ -1730,13 +1902,15 @@ TEST_F (Pkcs7VerifyRevokeTest, Chain3_IntermediateInDb_RootInDbx_Allowed) {
   ASSERT_NE (DbxList, (EFI_SIGNATURE_LIST *)NULL);
   EFI_SIGNATURE_LIST  *Dbx[] = { DbxList, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7Signed3Chain,
                          sizeof (mP7Signed3Chain),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
-                         Dbx
+                         Dbx,
+                         NULL
                          );
 
   EXPECT_EQ (Status, EFI_SUCCESS);
@@ -1769,13 +1943,15 @@ TEST_F (Pkcs7VerifyRevokeTest, Chain3_RootInDb_IntermediateInDbx_Rejected) {
   ASSERT_NE (DbxList, (EFI_SIGNATURE_LIST *)NULL);
   EFI_SIGNATURE_LIST  *Dbx[] = { DbxList, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7Signed3Chain,
                          sizeof (mP7Signed3Chain),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
-                         Dbx
+                         Dbx,
+                         NULL
                          );
 
   EXPECT_NE (Status, EFI_SUCCESS);
@@ -1806,13 +1982,15 @@ TEST_F (Pkcs7VerifyRevokeTest, Chain3_RootInDb_RootInDbx_Rejected) {
   ASSERT_NE (DbxList, (EFI_SIGNATURE_LIST *)NULL);
   EFI_SIGNATURE_LIST  *Dbx[] = { DbxList, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7Signed3Chain,
                          sizeof (mP7Signed3Chain),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
-                         Dbx
+                         Dbx,
+                         NULL
                          );
 
   EXPECT_NE (Status, EFI_SUCCESS);
@@ -1843,13 +2021,15 @@ TEST_F (Pkcs7VerifyRevokeTest, Chain3_RootInDb_LeafInDbx_Rejected) {
   ASSERT_NE (DbxList, (EFI_SIGNATURE_LIST *)NULL);
   EFI_SIGNATURE_LIST  *Dbx[] = { DbxList, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7Signed3Chain,
                          sizeof (mP7Signed3Chain),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
-                         Dbx
+                         Dbx,
+                         NULL
                          );
 
   EXPECT_NE (Status, EFI_SUCCESS);
@@ -1880,13 +2060,15 @@ TEST_F (Pkcs7VerifyRevokeTest, Chain3_IntermediateInDb_LeafInDbx_Rejected) {
   ASSERT_NE (DbxList, (EFI_SIGNATURE_LIST *)NULL);
   EFI_SIGNATURE_LIST  *Dbx[] = { DbxList, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7Signed3Chain,
                          sizeof (mP7Signed3Chain),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
-                         Dbx
+                         Dbx,
+                         NULL
                          );
 
   EXPECT_NE (Status, EFI_SUCCESS);
@@ -1919,13 +2101,15 @@ TEST_F (Pkcs7VerifyRevokeTest, Chain3_UnrelatedCertHashNotRevoked) {
   ASSERT_NE (DbxList, (EFI_SIGNATURE_LIST *)NULL);
   EFI_SIGNATURE_LIST  *Dbx[] = { DbxList, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7Signed3Chain,
                          sizeof (mP7Signed3Chain),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
-                         Dbx
+                         Dbx,
+                         NULL
                          );
 
   EXPECT_EQ (Status, EFI_SUCCESS);
@@ -1971,12 +2155,14 @@ TEST (P7CheckTrustMultiEntryX509Test, SecondEntryVerifies_Accepted) {
 
   EFI_SIGNATURE_LIST  *Db[] = { List, NULL };
 
-  EFI_STATUS  Status = P7CheckTrust (
+  EFI_STATUS  Status = Pkcs7VerifyContent (
                          (UINT8 *)mP7SignedChain,
                          sizeof (mP7SignedChain),
                          (UINT8 *)mTestContent,
                          sizeof (mTestContent),
+                         ContentValidationVerifyByData,
                          Db,
+                         NULL,
                          NULL
                          );
 
@@ -1986,7 +2172,7 @@ TEST (P7CheckTrustMultiEntryX509Test, SecondEntryVerifies_Accepted) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// P7CheckTrustByHash - generic (non-Authenticode) detached PKCS#7 by hash.
+// Fixtures - generic (non-Authenticode) detached PKCS#7 by hash (VerifySignature).
 //
 // The existing attached-content fixtures are generated with openssl -noattr and
 // are Authenticode-agnostic; the by-hash path (VerifySignature) requires a
@@ -2223,58 +2409,6 @@ BuildX509List (
   return List;
 }
 
-//
-// A generic detached PKCS#7 (pkcs7-data, signed attributes) is NOT Authenticode,
-// so AuthenticodeVerify() rejects it. P7CheckTrustByHash() must still accept it
-// via the Pkcs7VerifyByHash() fallback when the correct content hash and trust
-// anchor are supplied.
-//
-TEST (P7CheckTrustByHashGenericTest, GenericDetachedByHash_Accepted) {
-  EFI_SIGNATURE_LIST  *List = BuildX509List (mBhCaCert, sizeof (mBhCaCert));
-
-  ASSERT_NE (List, (EFI_SIGNATURE_LIST *)NULL);
-  EFI_SIGNATURE_LIST  *Db[] = { List, NULL };
-
-  EFI_STATUS  Status = P7CheckTrustByHash (
-                         (UINT8 *)mBhSignedData,
-                         sizeof (mBhSignedData),
-                         (UINT8 *)mBhContentSha256,
-                         sizeof (mBhContentSha256),
-                         Db,
-                         NULL
-                         );
-
-  EXPECT_EQ (Status, EFI_SUCCESS);
-
-  FreePool (List);
-}
-
-//
-// A wrong content hash must be rejected (messageDigest binding fails).
-//
-TEST (P7CheckTrustByHashGenericTest, GenericDetachedByHash_WrongHash_Rejected) {
-  EFI_SIGNATURE_LIST  *List = BuildX509List (mBhCaCert, sizeof (mBhCaCert));
-
-  ASSERT_NE (List, (EFI_SIGNATURE_LIST *)NULL);
-  EFI_SIGNATURE_LIST  *Db[] = { List, NULL };
-
-  UINT8  WrongHash[SHA256_DIGEST_SIZE];
-  CopyMem (WrongHash, mBhContentSha256, sizeof (WrongHash));
-  WrongHash[0] ^= 0xFF;
-
-  EFI_STATUS  Status = P7CheckTrustByHash (
-                         (UINT8 *)mBhSignedData,
-                         sizeof (mBhSignedData),
-                         WrongHash,
-                         sizeof (WrongHash),
-                         Db,
-                         NULL
-                         );
-
-  EXPECT_EQ (Status, EFI_SECURITY_VIOLATION);
-
-  FreePool (List);
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // VerifyBuffer - EFI_COMPROMISED_DATA vs EFI_SECURITY_VIOLATION (issue #2)

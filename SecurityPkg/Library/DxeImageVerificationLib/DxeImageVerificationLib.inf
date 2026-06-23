@@ -32,6 +32,8 @@
 [Sources]
   DxeImageVerificationLib.c
   DxeImageVerificationLib.h
+  ContentValidation.c
+  ContentValidation.h
   Measurement.c
 
 [Packages]

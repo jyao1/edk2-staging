@@ -38,6 +38,7 @@
   UefiBootServicesTableLib
 
 [Guids]
+  gEfiImageSecurityDatabaseGuid
   gEfiCertX509Guid
   gEfiCertV2X509Guid
   gEfiCertSha256Guid

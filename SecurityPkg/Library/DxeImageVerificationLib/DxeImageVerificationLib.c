@@ -19,6 +19,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 **/
 
 #include "DxeImageVerificationLib.h"
+#include "ContentValidation.h"
 
 //
 // Caution: This is used by a function which may receive untrusted input.
@@ -85,6 +86,54 @@ SecureBootHook (
   IN UINTN     DataSize,
   IN VOID      *Data
   );
+
+//
+// Forward declaration for the static helper used by
+// DxeImageVerificationHandler() (Step A/B) before its definition below.
+//
+STATIC
+EFI_SIGNATURE_LIST **
+SigListRegionToArray (
+  IN UINT8  *Region,
+  IN UINTN  RegionSize
+  );
+
+/**
+  Free the image-hash db/dbx arrays and their backing variable regions that
+  DxeImageVerificationHandler() reads once for Step A/B and reuses for Step C.
+  Any NULL argument is ignored.
+
+  @param[in]  Db       db pointer array from SigListRegionToArray(), or NULL.
+  @param[in]  Dbx      dbx pointer array from SigListRegionToArray(), or NULL.
+  @param[in]  DbData   db variable region, or NULL.
+  @param[in]  DbxData  dbx variable region, or NULL.
+
+**/
+STATIC
+VOID
+FreeHashDb (
+  IN EFI_SIGNATURE_LIST  **Db,
+  IN EFI_SIGNATURE_LIST  **Dbx,
+  IN UINT8               *DbData,
+  IN UINT8               *DbxData
+  )
+{
+  if (Db != NULL) {
+    FreePool (Db);
+  }
+
+  if (Dbx != NULL) {
+    FreePool (Dbx);
+  }
+
+  if (DbData != NULL) {
+    FreePool (DbData);
+  }
+
+  if (DbxData != NULL) {
+    FreePool (DbxData);
+  }
+}
 
 /**
   Reads contents of a PE/COFF image in memory buffer.
@@ -689,822 +738,75 @@ HashPeImageByType (
   return EFI_SUCCESS;
 }
 
+//
+// IsCertHashFoundInSigList() and IsCertHashFoundInDbx() are the shared,
+// phase-independent certificate-hash matcher. They live in ContentValidation.c
+// (kept byte-identical with Pkcs7VerifyDxe) and are declared in
+// ContentValidation.h.
+//
+
 /**
-  Check whether the hash of an given X.509 certificate is in the specified
-  signature list.
+  Split a single signature-database region (many contiguous EFI_SIGNATURE_LIST
+  entries, as returned by GetVariable for db/dbx) into a NULL-terminated array
+  of pointers to each entry, suitable for Pkcs7VerifyContent().
 
-  @param[in]  Certificate       Pointer to X.509 Certificate that is searched for.
-  @param[in]  CertSize          Size of X.509 Certificate.
-  @param[in]  SignatureList     Pointer to the Signature List to search.
-  @param[in]  SignatureListSize Size of Signature List.
-  @param[out] IsFound           Search result. Only valid if EFI_SUCCESS returned.
-  @param[out] MatchedSigData    Return the matched signature data node. Optional.
+  @param[in]  Region      Pointer to the signature-list region.
+  @param[in]  RegionSize  Size of Region in bytes.
 
-  @retval EFI_SUCCESS           Finished the search without any error.
-  @retval Others                Error occurred in the search of signature list.
+  @return A pool-allocated NULL-terminated array of EFI_SIGNATURE_LIST pointers
+          into Region (caller frees the array with FreePool(); the pointed-to
+          lists belong to Region). NULL on allocation failure or empty region.
 
 **/
-EFI_STATUS
-IsCertHashFoundInSigList (
-  IN  UINT8               *Certificate,
-  IN  UINTN               CertSize,
-  IN  EFI_SIGNATURE_LIST  *SignatureList,
-  IN  UINTN               SignatureListSize,
-  OUT BOOLEAN             *IsFound,
-  OUT EFI_SIGNATURE_DATA  **MatchedSigData OPTIONAL
+STATIC
+EFI_SIGNATURE_LIST **
+SigListRegionToArray (
+  IN UINT8  *Region,
+  IN UINTN  RegionSize
   )
 {
-  EFI_STATUS          Status;
   EFI_SIGNATURE_LIST  *SigList;
-  UINTN               SigSize;
-  EFI_SIGNATURE_DATA  *CertHash;
-  UINTN               CertHashCount;
+  EFI_SIGNATURE_LIST  **Array;
+  UINTN               Count;
+  UINTN               Remaining;
   UINTN               Index;
-  UINT32              HashAlg;
-  VOID                *HashCtx;
-  UINT8               CertDigest[MAX_DIGEST_SIZE];
-  UINT8               *SigCertHash;
-  UINTN               SiglistHeaderSize;
-  UINT8               *TBSCert;
-  UINTN               TBSCertSize;
-  BOOLEAN             IsV2;
 
-  Status   = EFI_ABORTED;
-  *IsFound = FALSE;
-  SigList  = SignatureList;
-  SigSize  = SignatureListSize;
-  HashCtx  = NULL;
-  HashAlg  = HASHALG_MAX;
-
-  if (SigList == NULL) {
-    return EFI_INVALID_PARAMETER;
-  }
-
-  if (MatchedSigData != NULL) {
-    *MatchedSigData = NULL;
+  if ((Region == NULL) || (RegionSize == 0)) {
+    return NULL;
   }
 
   //
-  // Retrieve the TBSCertificate from the X.509 Certificate.
+  // First pass: count the entries.
   //
-  if (!X509GetTBSCert (Certificate, CertSize, &TBSCert, &TBSCertSize)) {
-    return Status;
+  Count     = 0;
+  SigList   = (EFI_SIGNATURE_LIST *)Region;
+  Remaining = RegionSize;
+  while ((Remaining > 0) && (Remaining >= SigList->SignatureListSize) && (SigList->SignatureListSize > 0)) {
+    Count++;
+    Remaining -= SigList->SignatureListSize;
+    SigList    = (EFI_SIGNATURE_LIST *)((UINT8 *)SigList + SigList->SignatureListSize);
   }
 
-  while ((SigSize > 0) && (SigSize >= SigList->SignatureListSize)) {
-    //
-    // Determine Hash Algorithm of Certificate in the signature list.
-    //
-    IsV2 = FALSE;
-    if (CompareGuid (&SigList->SignatureType, &gEfiCertX509Sha256Guid)) {
-      HashAlg = HASHALG_SHA256;
-    } else if (CompareGuid (&SigList->SignatureType, &gEfiCertV2X509Sha256Guid)) {
-      HashAlg = HASHALG_SHA256;
-      IsV2    = TRUE;
-    } else if (CompareGuid (&SigList->SignatureType, &gEfiCertX509Sha384Guid)) {
-      HashAlg = HASHALG_SHA384;
-    } else if (CompareGuid (&SigList->SignatureType, &gEfiCertV2X509Sha384Guid)) {
-      HashAlg = HASHALG_SHA384;
-      IsV2    = TRUE;
-    } else if (CompareGuid (&SigList->SignatureType, &gEfiCertX509Sha512Guid)) {
-      HashAlg = HASHALG_SHA512;
-    } else if (CompareGuid (&SigList->SignatureType, &gEfiCertV2X509Sha512Guid)) {
-      HashAlg = HASHALG_SHA512;
-      IsV2    = TRUE;
-    } else {
-      SigSize -= SigList->SignatureListSize;
-      SigList  = (EFI_SIGNATURE_LIST *)((UINT8 *)SigList + SigList->SignatureListSize);
-      continue;
-    }
-
-    //
-    // Calculate the hash value of current TBSCertificate for comparision.
-    //
-    if (mHash[HashAlg].GetContextSize == NULL) {
-      goto Done;
-    }
-
-    ZeroMem (CertDigest, MAX_DIGEST_SIZE);
-    HashCtx = AllocatePool (mHash[HashAlg].GetContextSize ());
-    if (HashCtx == NULL) {
-      goto Done;
-    }
-
-    if (!mHash[HashAlg].HashInit (HashCtx)) {
-      goto Done;
-    }
-
-    if (!mHash[HashAlg].HashUpdate (HashCtx, TBSCert, TBSCertSize)) {
-      goto Done;
-    }
-
-    if (!mHash[HashAlg].HashFinal (HashCtx, CertDigest)) {
-      goto Done;
-    }
-
-    FreePool (HashCtx);
-    HashCtx = NULL;
-
-    SiglistHeaderSize = sizeof (EFI_SIGNATURE_LIST) + SigList->SignatureHeaderSize;
-    CertHash          = (EFI_SIGNATURE_DATA *)((UINT8 *)SigList + SiglistHeaderSize);
-    CertHashCount     = (SigList->SignatureListSize - SiglistHeaderSize) / SigList->SignatureSize;
-    for (Index = 0; Index < CertHashCount; Index++) {
-      //
-      // Iterate each Signature Data Node within this CertList for verify.
-      // V2 types use EFI_SIGNATURE_V2_DATA (no SignatureOwner prefix).
-      //
-      if (IsV2) {
-        SigCertHash = (UINT8 *)CertHash;
-      } else {
-        SigCertHash = CertHash->SignatureData;
-      }
-
-      if (CompareMem (SigCertHash, CertDigest, mHash[HashAlg].DigestLength) == 0) {
-        //
-        // Hash of Certificate is found in signature list.
-        //
-        Status   = EFI_SUCCESS;
-        *IsFound = TRUE;
-
-        //
-        // Return the matched signature data node.
-        //
-        if (MatchedSigData != NULL) {
-          *MatchedSigData = CertHash;
-        }
-
-        goto Done;
-      }
-
-      CertHash = (EFI_SIGNATURE_DATA *)((UINT8 *)CertHash + SigList->SignatureSize);
-    }
-
-    SigSize -= SigList->SignatureListSize;
-    SigList  = (EFI_SIGNATURE_LIST *)((UINT8 *)SigList + SigList->SignatureListSize);
+  if (Count == 0) {
+    return NULL;
   }
 
-  Status = EFI_NOT_FOUND;
-
-Done:
-  if (HashCtx != NULL) {
-    FreePool (HashCtx);
-  }
-
-  return Status;
-}
-
-/**
-  Check whether the hash of an given X.509 certificate is in forbidden database (DBX).
-
-  @param[in]  Certificate       Pointer to X.509 Certificate that is searched for.
-  @param[in]  CertSize          Size of X.509 Certificate.
-  @param[in]  SignatureList     Pointer to the Signature List in forbidden database.
-  @param[in]  SignatureListSize Size of Signature List.
-  @param[out] IsFound           Search result. Only valid if EFI_SUCCESS returned.
-
-  @retval EFI_SUCCESS           Finished the search without any error.
-  @retval Others                Error occurred in the search of database.
-
-**/
-EFI_STATUS
-IsCertHashFoundInDbx (
-  IN  UINT8               *Certificate,
-  IN  UINTN               CertSize,
-  IN  EFI_SIGNATURE_LIST  *SignatureList,
-  IN  UINTN               SignatureListSize,
-  OUT BOOLEAN             *IsFound
-  )
-{
-  EFI_STATUS Status;
-
-  if (SignatureList == NULL) {
-    return EFI_INVALID_PARAMETER;
-  }
-
-  Status = IsCertHashFoundInSigList (
-            Certificate,
-            CertSize,
-            SignatureList,
-            SignatureListSize,
-            IsFound,
-            NULL
-            );
-  if (Status == EFI_NOT_FOUND) {
-    return EFI_SUCCESS;
-  }
-
-  return Status;
-}
-
-/**
-  Check whether a signature list type is the V2 counterpart of a given V1 cert hash type.
-
-  @param[in]  SigType   Pointer to the SignatureType from the signature list.
-  @param[in]  CertType  Pointer to the V1 certificate hash type being searched.
-
-  @retval TRUE   SigType is the V2 variant of CertType.
-  @retval FALSE  SigType is not the V2 variant of CertType.
-
-**/
-STATIC
-BOOLEAN
-IsV2CertHashType (
-  IN  EFI_GUID  *SigType,
-  IN  EFI_GUID  *CertType
-  )
-{
-  if (CompareGuid (CertType, &gEfiCertSha256Guid)) {
-    return CompareGuid (SigType, &gEfiCertV2Sha256Guid);
-  } else if (CompareGuid (CertType, &gEfiCertSha384Guid)) {
-    return CompareGuid (SigType, &gEfiCertV2Sha384Guid);
-  } else if (CompareGuid (CertType, &gEfiCertSha512Guid)) {
-    return CompareGuid (SigType, &gEfiCertV2Sha512Guid);
-  }
-
-  return FALSE;
-}
-
-/**
-  Check whether signature is in specified database.
-
-  @param[in]  VariableName        Name of database variable that is searched in.
-  @param[in]  Signature           Pointer to signature that is searched for.
-  @param[in]  CertType            Pointer to hash algorithm.
-  @param[in]  SignatureSize       Size of Signature.
-  @param[out] IsFound             Search result. Only valid if EFI_SUCCESS returned
-
-  @retval EFI_SUCCESS             Finished the search without any error.
-  @retval Others                  Error occurred in the search of database.
-
-**/
-EFI_STATUS
-IsSignatureFoundInDatabase (
-  IN  CHAR16    *VariableName,
-  IN  UINT8     *Signature,
-  IN  EFI_GUID  *CertType,
-  IN  UINTN     SignatureSize,
-  OUT BOOLEAN   *IsFound
-  )
-{
-  EFI_STATUS          Status;
-  EFI_SIGNATURE_LIST  *CertList;
-  EFI_SIGNATURE_DATA  *Cert;
-  UINTN               DataSize;
-  UINT8               *Data;
-  UINTN               Index;
-  UINTN               CertCount;
-
-  //
-  // Read signature database variable.
-  //
-  *IsFound = FALSE;
-  Data     = NULL;
-  DataSize = 0;
-  Status   = gRT->GetVariable (VariableName, &gEfiImageSecurityDatabaseGuid, NULL, &DataSize, NULL);
-  if (Status != EFI_BUFFER_TOO_SMALL) {
-    if (Status == EFI_NOT_FOUND) {
-      //
-      // No database, no need to search.
-      //
-      Status = EFI_SUCCESS;
-    }
-
-    return Status;
-  }
-
-  Data = (UINT8 *)AllocateZeroPool (DataSize);
-  if (Data == NULL) {
-    return EFI_OUT_OF_RESOURCES;
-  }
-
-  Status = gRT->GetVariable (VariableName, &gEfiImageSecurityDatabaseGuid, NULL, &DataSize, Data);
-  if (EFI_ERROR (Status)) {
-    goto Done;
+  Array = (EFI_SIGNATURE_LIST **)AllocateZeroPool ((Count + 1) * sizeof (EFI_SIGNATURE_LIST *));
+  if (Array == NULL) {
+    return NULL;
   }
 
   //
-  // Enumerate all signature data in SigDB to check if signature exists for executable.
+  // Second pass: fill the array.
   //
-  CertList = (EFI_SIGNATURE_LIST *)Data;
-  while ((DataSize > 0) && (DataSize >= CertList->SignatureListSize)) {
-    CertCount = (CertList->SignatureListSize - sizeof (EFI_SIGNATURE_LIST) - CertList->SignatureHeaderSize) / CertList->SignatureSize;
-    Cert      = (EFI_SIGNATURE_DATA *)((UINT8 *)CertList + sizeof (EFI_SIGNATURE_LIST) + CertList->SignatureHeaderSize);
-    if ((CertList->SignatureSize == sizeof (EFI_SIGNATURE_DATA) - 1 + SignatureSize) && (CompareGuid (&CertList->SignatureType, CertType))) {
-      for (Index = 0; Index < CertCount; Index++) {
-        if (CompareMem (Cert->SignatureData, Signature, SignatureSize) == 0) {
-          //
-          // Find the signature in database.
-          //
-          *IsFound = TRUE;
-          //
-          // Entries in UEFI_IMAGE_SECURITY_DATABASE that are used to validate image should be measured
-          //
-          if (StrCmp (VariableName, EFI_IMAGE_SECURITY_DATABASE) == 0) {
-            SecureBootHook (VariableName, &gEfiImageSecurityDatabaseGuid, CertList->SignatureSize, Cert);
-          }
-
-          break;
-        }
-
-        Cert = (EFI_SIGNATURE_DATA *)((UINT8 *)Cert + CertList->SignatureSize);
-      }
-
-      if (*IsFound) {
-        break;
-      }
-    } else if ((CertList->SignatureSize == SignatureSize) && IsV2CertHashType (&CertList->SignatureType, CertType)) {
-      //
-      // V2 signature type: EFI_SIGNATURE_V2_DATA has no SignatureOwner,
-      // so SignatureSize equals the hash size directly.
-      //
-      for (Index = 0; Index < CertCount; Index++) {
-        if (CompareMem ((UINT8 *)Cert, Signature, SignatureSize) == 0) {
-          *IsFound = TRUE;
-          if (StrCmp (VariableName, EFI_IMAGE_SECURITY_DATABASE) == 0) {
-            SecureBootHook (VariableName, &gEfiImageSecurityDatabaseGuid, CertList->SignatureSize, Cert);
-          }
-
-          break;
-        }
-
-        Cert = (EFI_SIGNATURE_DATA *)((UINT8 *)Cert + CertList->SignatureSize);
-      }
-
-      if (*IsFound) {
-        break;
-      }
-    }
-
-    DataSize -= CertList->SignatureListSize;
-    CertList  = (EFI_SIGNATURE_LIST *)((UINT8 *)CertList + CertList->SignatureListSize);
+  SigList = (EFI_SIGNATURE_LIST *)Region;
+  for (Index = 0; Index < Count; Index++) {
+    Array[Index] = SigList;
+    SigList      = (EFI_SIGNATURE_LIST *)((UINT8 *)SigList + SigList->SignatureListSize);
   }
 
-Done:
-  if (Data != NULL) {
-    FreePool (Data);
-  }
-
-  return Status;
-}
-
-/**
-  Check whether the certificate is not revoked by dbx.
-
-  @param[in]  Certificate   Pointer to X.509 Certificate.
-  @param[in]  CertSize      Size of X.509 Certificate.
-  @param[in]  DbxData       Pointer to dbx variable contents, or NULL if dbx is absent.
-  @param[in]  DbxDataSize   Size of DbxData in bytes.
-
-  @retval TRUE   Certificate is not revoked.
-  @retval FALSE  Certificate is revoked, or dbx search failed.
-
-**/
-BOOLEAN
-IsCertAllowedByDbx (
-  IN UINT8  *Certificate,
-  IN UINTN  CertSize,
-  IN UINT8  *DbxData,
-  IN UINTN  DbxDataSize
-  )
-{
-  EFI_STATUS  Status;
-  BOOLEAN     IsFound;
-
-  if (DbxData == NULL) {
-    return TRUE;
-  }
-
-  Status = IsCertHashFoundInDbx (
-             Certificate,
-             CertSize,
-             (EFI_SIGNATURE_LIST *)DbxData,
-             DbxDataSize,
-             &IsFound
-             );
-  if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_INFO, "DxeImageVerificationLib: Error searching DBX.\n"));
-    return FALSE;
-  }
-
-  if (IsFound) {
-    DEBUG ((DEBUG_INFO, "DxeImageVerificationLib: Certificate is revoked in DBX.\n"));
-    return FALSE;
-  }
-
-  return TRUE;
-}
-
-/**
-  Find the index of a certificate within a signing-chain certificate buffer.
-
-  The CertBuffer is the signing chain returned by Pkcs7GetCertificatesList(), formatted
-  as:
-        UINT8  CertNumber;
-        UINT32 Cert1Length; UINT8 Cert1[]; ... UINT32 CertnLength; UINT8 Certn[];
-  with index 0 being the leaf (signer) certificate and ascending toward the root.
-
-  @param[in]  CertBuffer    Signing-chain certificate buffer.
-  @param[in]  TargetCert    Pointer to the DER certificate to locate.
-  @param[in]  TargetSize    Size of TargetCert in bytes.
-
-  @retval >= 0  The index of the matching certificate in the chain.
-  @retval -1    The certificate is not present in the chain.
-
-**/
-STATIC
-INTN
-FindCertIndexInChain (
-  IN UINT8  *CertBuffer,
-  IN UINT8  *TargetCert,
-  IN UINTN  TargetSize
-  )
-{
-  UINT8  CertNumber;
-  UINT8  *CertPtr;
-  UINT8  *Cert;
-  UINTN  CertSize;
-  UINTN  Index;
-
-  if ((CertBuffer == NULL) || (TargetCert == NULL)) {
-    return -1;
-  }
-
-  CertNumber = (UINT8)(*CertBuffer);
-  CertPtr    = CertBuffer + 1;
-  for (Index = 0; Index < CertNumber; Index++) {
-    CertSize = (UINTN)ReadUnaligned32 ((UINT32 *)CertPtr);
-    Cert     = (UINT8 *)CertPtr + sizeof (UINT32);
-    CertPtr  = CertPtr + sizeof (UINT32) + CertSize;
-
-    if ((CertSize == TargetSize) && (CompareMem (Cert, TargetCert, CertSize) == 0)) {
-      return (INTN)Index;
-    }
-  }
-
-  return -1;
-}
-
-/**
-  Check the trust-anchor and the certificates below it (toward the leaf) against dbx.
-
-  Per UEFI Spec 32.5.3.3, when a trust anchor is found in db, only that anchor
-  and the certificates below it in the signing chain (that is, between the anchor
-  and the leaf signer, inclusive) are evaluated against dbx. Any certificate
-  above the anchor (closer to the root) is ignored even if it is present in dbx.
-
-  The signing chain returned by Pkcs7GetCertificatesList() is ordered root-first (index 0
-  is the top of the chain, closest to the root) and descends toward the leaf
-  signer at the highest index, so "the anchor and everything below it (toward
-  the leaf)" is the inclusive index range [AnchorIndex, CertNumber - 1].
-
-  @param[in]  CertBuffer    Signing-chain certificate buffer from Pkcs7GetCertificatesList().
-  @param[in]  AnchorIndex   Index of the trust anchor in CertBuffer. A negative
-                            value means the trust anchor is not one of the
-                            embedded certificates (for example a root supplied by
-                            db that is above the entire embedded chain), in which
-                            case every embedded certificate is below the anchor
-                            and is evaluated against dbx.
-  @param[in]  DbxData       Pointer to dbx contents, or NULL if dbx is absent.
-  @param[in]  DbxDataSize   Size of DbxData in bytes.
-
-  @retval TRUE   Neither the anchor nor any certificate below it is revoked.
-  @retval FALSE  The anchor or a certificate below it is revoked, or a dbx
-                 search failed.
-
-**/
-STATIC
-BOOLEAN
-IsSignerChainAllowedByDbx (
-  IN UINT8  *CertBuffer,
-  IN INTN   AnchorIndex,
-  IN UINT8  *DbxData,
-  IN UINTN  DbxDataSize
-  )
-{
-  UINT8  CertNumber;
-  UINT8  *CertPtr;
-  UINT8  *Cert;
-  UINTN  CertSize;
-  UINTN  Index;
-
-  if (DbxData == NULL) {
-    return TRUE;
-  }
-
-  CertNumber = (UINT8)(*CertBuffer);
-  CertPtr    = CertBuffer + 1;
-  for (Index = 0; Index < CertNumber; Index++) {
-    CertSize = (UINTN)ReadUnaligned32 ((UINT32 *)CertPtr);
-    Cert     = (UINT8 *)CertPtr + sizeof (UINT32);
-    CertPtr  = CertPtr + sizeof (UINT32) + CertSize;
-
-    //
-    // Certificates above the trust anchor (lower index, closer to the root) are
-    // not evaluated against dbx. When AnchorIndex is negative the anchor is
-    // above the whole embedded chain, so every embedded certificate is checked.
-    //
-    if ((AnchorIndex >= 0) && (Index < (UINTN)AnchorIndex)) {
-      continue;
-    }
-
-    if (!IsCertAllowedByDbx (Cert, CertSize, DbxData, DbxDataSize)) {
-      return FALSE;
-    }
-  }
-
-  return TRUE;
-}
-
-/**
-  Check whether the image signature can be verified by the trusted certificates in DB database.
-
-  @param[in]  AuthData      Pointer to the Authenticode signature retrieved from signed image.
-  @param[in]  AuthDataSize  Size of the Authenticode signature in bytes.
-
-  @retval TRUE         Image passed verification using certificate in db.
-  @retval FALSE        Image didn't pass verification using certificate in db.
-
-**/
-BOOLEAN
-IsAllowedByDb (
-  IN UINT8  *AuthData,
-  IN UINTN  AuthDataSize
-  )
-{
-  EFI_STATUS          Status;
-  BOOLEAN             VerifyStatus;
-  BOOLEAN             IsFound;
-  EFI_SIGNATURE_LIST  *CertList;
-  EFI_SIGNATURE_DATA  *CertData;
-  UINTN               DataSize;
-  UINT8               *Data;
-  UINT8               *RootCert;
-  UINTN               RootCertSize;
-  UINT8               CertNumber;
-  UINT8               *CertPtr;
-  UINT8               *Cert;
-  UINTN               CertSize;
-  UINTN               Index;
-  UINTN               CertCount;
-  UINTN               DbxDataSize;
-  UINT8               *DbxData;
-  UINT8               *CertBuffer;
-  UINTN               BufferLength;
-  UINT8               *TrustedCert;
-  UINTN               TrustedCertLength;
-  INTN                AnchorIndex;
-
-  Data              = NULL;
-  CertList          = NULL;
-  CertData          = NULL;
-  RootCert          = NULL;
-  DbxData           = NULL;
-  RootCertSize      = 0;
-  CertNumber        = 0;
-  CertPtr           = NULL;
-  Cert              = NULL;
-  CertSize          = 0;
-  VerifyStatus      = FALSE;
-  CertBuffer        = NULL;
-  BufferLength      = 0;
-  TrustedCert       = NULL;
-  TrustedCertLength = 0;
-
-  //
-  // Fetch 'db' content. If 'db' doesn't exist or encounters problem to get the
-  // data, return not-allowed-by-db (FALSE).
-  //
-  DataSize = 0;
-  Status   = gRT->GetVariable (EFI_IMAGE_SECURITY_DATABASE, &gEfiImageSecurityDatabaseGuid, NULL, &DataSize, NULL);
-  ASSERT (EFI_ERROR (Status));
-  if (Status != EFI_BUFFER_TOO_SMALL) {
-    return VerifyStatus;
-  }
-
-  Data = (UINT8 *)AllocateZeroPool (DataSize);
-  if (Data == NULL) {
-    return VerifyStatus;
-  }
-
-  Status = gRT->GetVariable (EFI_IMAGE_SECURITY_DATABASE, &gEfiImageSecurityDatabaseGuid, NULL, &DataSize, (VOID *)Data);
-  if (EFI_ERROR (Status)) {
-    goto Done;
-  }
-
-  //
-  // Fetch 'dbx' content. If 'dbx' doesn't exist, continue to check 'db'.
-  // If any other errors occurred, no need to check 'db' but just return
-  // not-allowed-by-db (FALSE) to avoid bypass.
-  //
-  DbxDataSize = 0;
-  Status      = gRT->GetVariable (EFI_IMAGE_SECURITY_DATABASE1, &gEfiImageSecurityDatabaseGuid, NULL, &DbxDataSize, NULL);
-  ASSERT (EFI_ERROR (Status));
-  if (Status != EFI_BUFFER_TOO_SMALL) {
-    if (Status != EFI_NOT_FOUND) {
-      goto Done;
-    }
-
-    //
-    // 'dbx' does not exist. Continue to check 'db'.
-    //
-  } else {
-    //
-    // 'dbx' exists. Get its content.
-    //
-    DbxData = (UINT8 *)AllocateZeroPool (DbxDataSize);
-    if (DbxData == NULL) {
-      goto Done;
-    }
-
-    Status = gRT->GetVariable (EFI_IMAGE_SECURITY_DATABASE1, &gEfiImageSecurityDatabaseGuid, NULL, &DbxDataSize, (VOID *)DbxData);
-    if (EFI_ERROR (Status)) {
-      goto Done;
-    }
-  }
-
-  //
-  // Retrieve the signer's full certificate chain from AuthData so that an
-  // intermediate or root certificate listed in db (by EFI_CERT_X509_SHAxxx
-  // hash) can serve as the trust anchor, per UEFI Spec 32.5.3.3. A UEFI image
-  // signature is single-signer; Pkcs7GetCertificatesList() returns that one
-  // signer's chain and yields no chain for a (non-conformant) multi-signer
-  // SignedData, which is therefore not allowed by db.
-  // The output CertStack format will be:
-  //       UINT8  CertNumber;
-  //       UINT32 Cert1Length;
-  //       UINT8  Cert1[];
-  //       UINT32 Cert2Length;
-  //       UINT8  Cert2[];
-  //       ...
-  //       UINT32 CertnLength;
-  //       UINT8  Certn[];
-  //
-  if (!Pkcs7GetCertificatesList (AuthData, AuthDataSize, &CertBuffer, &BufferLength, &TrustedCert, &TrustedCertLength) ||
-      (BufferLength == 0) || (CertBuffer == NULL) || ((*CertBuffer) == 0))
-  {
-    goto Done;
-  }
-
-  //
-  // Find X509 certificate in Signature List to verify the signature in pkcs7 signed data.
-  //
-  CertList = (EFI_SIGNATURE_LIST *)Data;
-  while ((DataSize > 0) && (DataSize >= CertList->SignatureListSize)) {
-    if (CompareGuid (&CertList->SignatureType, &gEfiCertX509Guid)) {
-      CertData  = (EFI_SIGNATURE_DATA *)((UINT8 *)CertList + sizeof (EFI_SIGNATURE_LIST) + CertList->SignatureHeaderSize);
-      CertCount = (CertList->SignatureListSize - sizeof (EFI_SIGNATURE_LIST) - CertList->SignatureHeaderSize) / CertList->SignatureSize;
-
-      for (Index = 0; Index < CertCount; Index++) {
-        //
-        // Iterate each Signature Data Node within this CertList for verify.
-        //
-        RootCert     = CertData->SignatureData;
-        RootCertSize = CertList->SignatureSize - sizeof (EFI_GUID);
-
-        //
-        // Call AuthenticodeVerify library to Verify Authenticode struct.
-        //
-        VerifyStatus = AuthenticodeVerify (
-                         AuthData,
-                         AuthDataSize,
-                         RootCert,
-                         RootCertSize,
-                         mImageDigest,
-                         mImageDigestSize
-                         );
-        if (VerifyStatus) {
-          //
-          // The image is signed and verifies up to this db certificate (the
-          // trust anchor). Per UEFI Spec 32.5.3.3, check the trust anchor and
-          // the certificates below it (toward the leaf) against dbx; any
-          // certificate above the anchor is ignored.
-          //
-          AnchorIndex  = FindCertIndexInChain (CertBuffer, RootCert, RootCertSize);
-          VerifyStatus = IsSignerChainAllowedByDbx (CertBuffer, (UINTN)AnchorIndex, DbxData, DbxDataSize);
-          goto Done;
-        }
-
-        CertData = (EFI_SIGNATURE_DATA *)((UINT8 *)CertData + CertList->SignatureSize);
-      }
-    } else if (CompareGuid (&CertList->SignatureType, &gEfiCertV2X509Guid)) {
-      //
-      // V2 X509: EFI_SIGNATURE_V2_DATA has no SignatureOwner.
-      //
-      RootCert     = (UINT8 *)CertList + sizeof (EFI_SIGNATURE_LIST) + CertList->SignatureHeaderSize;
-      RootCertSize = CertList->SignatureSize;
-
-      VerifyStatus = AuthenticodeVerify (
-                       AuthData,
-                       AuthDataSize,
-                       RootCert,
-                       RootCertSize,
-                       mImageDigest,
-                       mImageDigestSize
-                       );
-      if (VerifyStatus) {
-        AnchorIndex  = FindCertIndexInChain (CertBuffer, RootCert, RootCertSize);
-        VerifyStatus = IsSignerChainAllowedByDbx (CertBuffer, (UINTN)AnchorIndex, DbxData, DbxDataSize);
-        goto Done;
-      }
-    } else if ((CompareGuid (&CertList->SignatureType, &gEfiCertX509Sha256Guid))
-            || (CompareGuid (&CertList->SignatureType, &gEfiCertX509Sha384Guid))
-            || (CompareGuid (&CertList->SignatureType, &gEfiCertX509Sha512Guid))
-            || (CompareGuid (&CertList->SignatureType, &gEfiCertV2X509Sha256Guid))
-            || (CompareGuid (&CertList->SignatureType, &gEfiCertV2X509Sha384Guid))
-            || (CompareGuid (&CertList->SignatureType, &gEfiCertV2X509Sha512Guid))) {
-      //
-      // Check whether any certificate hash in the image signing chain is allowed
-      // by this db entry and is not revoked in dbx.
-      //
-      CertNumber   = (UINT8)(*CertBuffer);
-      CertPtr      = CertBuffer + 1;
-      VerifyStatus = FALSE;
-
-      for (Index = 0; Index < CertNumber; Index++) {
-        CertSize = (UINTN)ReadUnaligned32 ((UINT32 *)CertPtr);
-        Cert     = (UINT8 *)CertPtr + sizeof (UINT32);
-        CertPtr  = CertPtr + sizeof (UINT32) + CertSize;
-
-        //
-        // Compare against each hash entry in this db CertList.
-        //
-        IsFound = FALSE;
-        Status  = IsCertHashFoundInSigList (
-                    Cert,
-                    CertSize,
-                    CertList,
-                    CertList->SignatureListSize,
-                    &IsFound,
-                    &CertData
-                  );
-        if (EFI_ERROR (Status) || !IsFound || (CertData == NULL)) {
-          continue;
-        }
-
-        //
-        // Certificate hash is found in db. Verify that the AuthData signature
-        // is actually signed by this certificate before trusting it.
-        //
-        if (!AuthenticodeVerify (
-               AuthData,
-               AuthDataSize,
-               Cert,
-               CertSize,
-               mImageDigest,
-               mImageDigestSize
-               ))
-        {
-          //
-          // The hash of this TBSCertificate matched a db entry, but the image
-          // signature does not verify up to this particular certificate. The
-          // candidate set may contain more than one certificate (the full
-          // signing chain, or multiple signers), and per UEFI Spec 32.5.3.3 the
-          // image is accepted if ANY of its signatures verifies up to a db
-          // certificate and is not revoked in dbx. Continue checking the
-          // remaining certificates rather than rejecting the whole image here.
-          //
-          DEBUG ((DEBUG_INFO, "DxeImageVerificationLib: Image cert hash is in DB but AuthenticodeVerify failed. Try next candidate.\n"));
-          continue;
-        }
-
-        //
-        // Signature verified. This db-matched certificate (at chain index
-        // Index) is the trust anchor. Per UEFI Spec 32.5.3.3, check the trust
-        // anchor and the certificates below it (toward the leaf) against dbx;
-        // any certificate above the anchor is ignored. The chain is root-first,
-        // so "the anchor and below" is the index range [Index, CertNumber - 1].
-        //
-        if (!IsSignerChainAllowedByDbx (CertBuffer, (INTN)Index, DbxData, DbxDataSize)) {
-          goto Done;
-        }
-
-        VerifyStatus = TRUE;
-        goto Done;
-      }
-    }
-
-    DataSize -= CertList->SignatureListSize;
-    CertList  = (EFI_SIGNATURE_LIST *)((UINT8 *)CertList + CertList->SignatureListSize);
-  }
-
-Done:
-
-  if (VerifyStatus) {
-    SecureBootHook (EFI_IMAGE_SECURITY_DATABASE, &gEfiImageSecurityDatabaseGuid, CertList->SignatureSize, CertData);
-  }
-
-  if (Data != NULL) {
-    FreePool (Data);
-  }
-
-  if (DbxData != NULL) {
-    FreePool (DbxData);
-  }
-
-  Pkcs7FreeSigners (CertBuffer);
-  Pkcs7FreeSigners (TrustedCert);
-
-  return VerifyStatus;
+  Array[Count] = NULL;
+  return Array;
 }
 
 /**
@@ -1582,13 +884,21 @@ DxeImageVerificationHandler (
   EFI_STATUS                    DbStatus;
   EFI_STATUS                    VarStatus;
   UINT32                        VarAttr;
-  BOOLEAN                       IsFound;
   UINT8                         HashAlg;
+  UINT8                         *DbData;
+  UINTN                         DbDataSize;
+  UINT8                         *DbxData;
+  UINTN                         DbxDataSize;
+  EFI_SIGNATURE_LIST            **HashDb;
+  EFI_SIGNATURE_LIST            **HashDbx;
 
   WinCertificate = NULL;
   SecDataDir     = NULL;
   PkcsCertData   = NULL;
-  IsFound        = FALSE;
+  DbData         = NULL;
+  DbxData        = NULL;
+  HashDb         = NULL;
+  HashDbx        = NULL;
   ZeroMem (mImageDigestCached, sizeof (mImageDigestCached));
 
   //
@@ -1744,8 +1054,35 @@ DxeImageVerificationHandler (
   //
 
   //
-  // Step A and B: Check the image hash against dbx and db using all supported hash algorithms.
+  // Step A and B: Check the image hash against dbx and db using all supported
+  // hash algorithms. Read db/dbx once and present each as the NULL-terminated
+  // array shape PeVerifyHash() expects (a single GetVariable region split with
+  // SigListRegionToArray). PeVerifyHash() performs both rules in one call:
+  // rule A (hash in dbx -> EFI_SECURITY_VIOLATION) and rule B (hash in db ->
+  // EFI_SUCCESS, measuring the matched db node via SecureBootHook).
   //
+  DbDataSize = 0;
+  VarStatus  = gRT->GetVariable (EFI_IMAGE_SECURITY_DATABASE, &gEfiImageSecurityDatabaseGuid, NULL, &DbDataSize, NULL);
+  if (VarStatus == EFI_BUFFER_TOO_SMALL) {
+    DbData = (UINT8 *)AllocateZeroPool (DbDataSize);
+    if ((DbData != NULL) &&
+        !EFI_ERROR (gRT->GetVariable (EFI_IMAGE_SECURITY_DATABASE, &gEfiImageSecurityDatabaseGuid, NULL, &DbDataSize, DbData)))
+    {
+      HashDb = SigListRegionToArray (DbData, DbDataSize);
+    }
+  }
+
+  DbxDataSize = 0;
+  VarStatus   = gRT->GetVariable (EFI_IMAGE_SECURITY_DATABASE1, &gEfiImageSecurityDatabaseGuid, NULL, &DbxDataSize, NULL);
+  if (VarStatus == EFI_BUFFER_TOO_SMALL) {
+    DbxData = (UINT8 *)AllocateZeroPool (DbxDataSize);
+    if ((DbxData != NULL) &&
+        !EFI_ERROR (gRT->GetVariable (EFI_IMAGE_SECURITY_DATABASE1, &gEfiImageSecurityDatabaseGuid, NULL, &DbxDataSize, DbxData)))
+    {
+      HashDbx = SigListRegionToArray (DbxData, DbxDataSize);
+    }
+  }
+
   HashAlg = sizeof (mHash) / sizeof (HASH_TABLE);
   while (HashAlg > 0) {
     HashAlg--;
@@ -1761,41 +1098,40 @@ DxeImageVerificationHandler (
     mImageDigestCached[HashAlg] = TRUE;
 
     //
-    // Step A: If the hash of the binary is in dbx, the image shall fail validation.
+    // Step A and B in one shared call.
     //
-    DbStatus = IsSignatureFoundInDatabase (
-                 EFI_IMAGE_SECURITY_DATABASE1,
+    DbStatus = PeVerifyHash (
                  mImageDigest,
-                 &mCertType,
                  mImageDigestSize,
-                 &IsFound
+                 HashDb,
+                 HashDbx,
+                 SecureBootHook
                  );
-    if (EFI_ERROR (DbStatus) || IsFound) {
+    if (DbStatus == EFI_SECURITY_VIOLATION) {
+      //
+      // Step A: the image hash is in dbx; the image fails validation.
+      //
       DEBUG ((DEBUG_INFO, "DxeImageVerificationLib: %s hash of image is found in DBX.\n", mHashTypeStr));
       goto Failed;
     }
 
-    //
-    // Step B: If the hash of the binary is in db, the image shall pass validation.
-    //
-    DbStatus = IsSignatureFoundInDatabase (
-                 EFI_IMAGE_SECURITY_DATABASE,
-                 mImageDigest,
-                 &mCertType,
-                 mImageDigestSize,
-                 &IsFound
-                 );
-    if (!EFI_ERROR (DbStatus) && IsFound) {
+    if (DbStatus == EFI_SUCCESS) {
+      //
+      // Step B: the image hash is in db (and not in dbx); the image passes.
+      //
+      FreeHashDb (HashDb, HashDbx, DbData, DbxData);
       return EFI_SUCCESS;
     }
   }
 
   //
   // Step C: For unsigned images, there are no signatures to check, so fail.
+  // (The image-hash databases HashDb/HashDbx are kept for the signature checks
+  // below and freed at Done.)
   //
   if ((SecDataDir == NULL) || (SecDataDir->Size == 0)) {
     DEBUG ((DEBUG_INFO, "DxeImageVerificationLib: Image is not signed and %s hash of image is not found in DB/DBX.\n", mHashTypeStr));
-    goto Failed;
+    goto Done;
   }
 
   //
@@ -1870,13 +1206,25 @@ DxeImageVerificationHandler (
     // and neither that anchor nor any certificate below it (toward the leaf) is
     // revoked in dbx. Per UEFI Spec 32.5.3.3, dbx is evaluated relative to the
     // trust anchor: a certificate above the anchor (closer to the root) is
-    // ignored even if present in dbx. IsAllowedByDb() performs this anchor-
-    // relative db/dbx evaluation, so the dbx revocation check is no longer a
-    // separate whole-chain pre-pass here. A signature that is not accepted only
-    // disqualifies itself; the image may still pass via another signature, so
-    // continue evaluating the remaining ones.
+    // ignored even if present in dbx. The shared Pkcs7VerifyContent() performs
+    // this anchor-relative db/dbx evaluation against the PE image digest
+    // (ContentValidationVerifyByPeImageHash), measuring the matched db node via
+    // SecureBootHook. A signature that is not accepted only disqualifies
+    // itself; the image may still pass via another signature, so continue
+    // evaluating the remaining ones.
     //
-    if (IsAllowedByDb (AuthData, AuthDataSize)) {
+    if (Pkcs7VerifyContent (
+          AuthData,
+          AuthDataSize,
+          mImageDigest,
+          mImageDigestSize,
+          ContentValidationVerifyByPeImageHash,
+          HashDb,
+          HashDbx,
+          SecureBootHook
+          ) == EFI_SUCCESS)
+    {
+      FreeHashDb (HashDb, HashDbx, DbData, DbxData);
       return EFI_SUCCESS;
     }
   }
@@ -1885,6 +1233,12 @@ DxeImageVerificationHandler (
   // Step D: No signature was accepted. The image fails validation.
   //
   DEBUG ((DEBUG_INFO, "DxeImageVerificationLib: Image is signed but signature is not allowed by DB and is not found in DB/DBX.\n"));
+
+Done:
+  //
+  // Free the image-hash db/dbx read once for Step A/B and reused for Step C.
+  //
+  FreeHashDb (HashDb, HashDbx, DbData, DbxData);
 
 Failed:
   if (Policy == DEFER_EXECUTE_ON_SECURITY_VIOLATION) {
