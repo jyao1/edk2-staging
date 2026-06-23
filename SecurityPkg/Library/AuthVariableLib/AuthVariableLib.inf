@@ -28,6 +28,8 @@
   AuthVariableLib.c
   AuthService.c
   AuthServiceInternal.h
+  ContentValidation.c
+  ContentValidation.h
 
 [Packages]
   MdePkg/MdePkg.dec
@@ -80,6 +82,12 @@
   gEfiCertPkcs7Guid              ## SOMETIMES_CONSUMES   ## GUID  # Unique ID for the type of the certificate.
   gEfiCertX509Guid               ## SOMETIMES_CONSUMES   ## GUID  # Unique ID for the type of the signature.
   gEfiCertV2X509Guid             ## SOMETIMES_CONSUMES   ## GUID  # Unique ID for the type of the signature.
+  gEfiCertSha256Guid             ## SOMETIMES_CONSUMES   ## GUID  # Unique ID for the type of the signature (shared ContentValidation.c).
+  gEfiCertSha384Guid             ## SOMETIMES_CONSUMES   ## GUID  # Unique ID for the type of the signature (shared ContentValidation.c).
+  gEfiCertSha512Guid             ## SOMETIMES_CONSUMES   ## GUID  # Unique ID for the type of the signature (shared ContentValidation.c).
+  gEfiCertX509Sha256Guid         ## SOMETIMES_CONSUMES   ## GUID  # Unique ID for the type of the signature (shared ContentValidation.c).
+  gEfiCertX509Sha384Guid         ## SOMETIMES_CONSUMES   ## GUID  # Unique ID for the type of the signature (shared ContentValidation.c).
+  gEfiCertX509Sha512Guid         ## SOMETIMES_CONSUMES   ## GUID  # Unique ID for the type of the signature (shared ContentValidation.c).
   gEfiCertV2Sha256Guid           ## SOMETIMES_CONSUMES   ## GUID  # Unique ID for the type of the signature.
   gEfiCertV2Sha384Guid           ## SOMETIMES_CONSUMES   ## GUID  # Unique ID for the type of the signature.
   gEfiCertV2Sha512Guid           ## SOMETIMES_CONSUMES   ## GUID  # Unique ID for the type of the signature.

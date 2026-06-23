@@ -26,6 +26,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 **/
 
 #include "AuthServiceInternal.h"
+#include "ContentValidation.h"
 
 #include <Protocol/VariablePolicy.h>
 #include <Library/VariablePolicyLib.h>
@@ -1420,6 +1421,70 @@ FindHashAlgorithmIndex (
 }
 
 /**
+  Split a single signature-database region (many contiguous EFI_SIGNATURE_LIST
+  entries, as returned by GetVariable for PK/KEK/db/dbx) into a NULL-terminated
+  array of pointers to each entry, suitable for Pkcs7VerifyContent().
+
+  @param[in]  Region      Pointer to the signature-list region.
+  @param[in]  RegionSize  Size of Region in bytes.
+
+  @return A pool-allocated NULL-terminated array of EFI_SIGNATURE_LIST pointers
+          into Region (caller frees the array with FreePool(); the pointed-to
+          lists belong to Region). NULL on allocation failure or empty region.
+
+**/
+STATIC
+EFI_SIGNATURE_LIST **
+SigListRegionToArray (
+  IN UINT8  *Region,
+  IN UINTN  RegionSize
+  )
+{
+  EFI_SIGNATURE_LIST  *SigList;
+  EFI_SIGNATURE_LIST  **Array;
+  UINTN               Count;
+  UINTN               Remaining;
+  UINTN               Index;
+
+  if ((Region == NULL) || (RegionSize == 0)) {
+    return NULL;
+  }
+
+  //
+  // First pass: count the entries.
+  //
+  Count     = 0;
+  SigList   = (EFI_SIGNATURE_LIST *)Region;
+  Remaining = RegionSize;
+  while ((Remaining > 0) && (Remaining >= SigList->SignatureListSize) && (SigList->SignatureListSize > 0)) {
+    Count++;
+    Remaining -= SigList->SignatureListSize;
+    SigList    = (EFI_SIGNATURE_LIST *)((UINT8 *)SigList + SigList->SignatureListSize);
+  }
+
+  if (Count == 0) {
+    return NULL;
+  }
+
+  Array = (EFI_SIGNATURE_LIST **)AllocateZeroPool ((Count + 1) * sizeof (EFI_SIGNATURE_LIST *));
+  if (Array == NULL) {
+    return NULL;
+  }
+
+  //
+  // Second pass: fill the array.
+  //
+  SigList = (EFI_SIGNATURE_LIST *)Region;
+  for (Index = 0; Index < Count; Index++) {
+    Array[Index] = SigList;
+    SigList      = (EFI_SIGNATURE_LIST *)((UINT8 *)SigList + SigList->SignatureListSize);
+  }
+
+  Array[Count] = NULL;
+  return Array;
+}
+
+/**
   Process variable with EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS set
 
   Caution: This function may receive untrusted input.
@@ -1471,10 +1536,7 @@ VerifyTimeBasedPayload (
   EFI_STATUS                     Status;
   EFI_SIGNATURE_LIST             *CertList;
   EFI_SIGNATURE_DATA             *Cert;
-  BOOLEAN                        IsV2Cert;
-  UINTN                          Index;
-  UINTN                          CertCount;
-  UINT32                         KekDataSize;
+  EFI_SIGNATURE_LIST             **SigDbArray;
   UINT8                          *NewData;
   UINTN                          NewDataSize;
   UINT8                          *Buffer;
@@ -1500,6 +1562,7 @@ VerifyTimeBasedPayload (
   SignerCerts   = NULL;
   TopLevelCert  = NULL;
   CertDataPtr   = NULL;
+  SigDbArray    = NULL;
 
   //
   // When the attribute EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS is
@@ -1719,16 +1782,32 @@ VerifyTimeBasedPayload (
     }
 
     //
-    // Verify Pkcs7 SignedData via Pkcs7Verify library.
+    // The identity match above already enforces "no chaining for PK": the
+    // SignedData top-level certificate must be the Platform Key itself. Route
+    // the final trust step through the shared Pkcs7VerifyContent() decision so
+    // PK and KEK share one verification path. The PK variable is a signature
+    // database with exactly one EFI_CERT_X509 entry; present it as the
+    // NULL-terminated array shape and verify the PKCS#7 SignedData over the
+    // serialized NewData (ContentValidationVerifyByData -> Pkcs7Verify()). PK
+    // has no associated forbidden database, so RevokedDb is NULL and no
+    // measurement hook is used.
     //
-    VerifyStatus = Pkcs7Verify (
-                     SigData,
-                     SigDataSize,
-                     TopLevelCert,
-                     TopLevelCertSize,
-                     NewData,
-                     NewDataSize
-                     );
+    SigDbArray = SigListRegionToArray ((UINT8 *)Data, DataSize);
+    if (SigDbArray != NULL) {
+      VerifyStatus = (BOOLEAN)(Pkcs7VerifyContent (
+                                 SigData,
+                                 SigDataSize,
+                                 NewData,
+                                 NewDataSize,
+                                 ContentValidationVerifyByData,
+                                 SigDbArray,
+                                 NULL,
+                                 NULL
+                                 ) == EFI_SUCCESS);
+      FreePool (SigDbArray);
+    } else {
+      VerifyStatus = FALSE;
+    }
   } else if (AuthVarType == AuthVarTypeKek) {
     //
     // Get KEK database from variable.
@@ -1744,82 +1823,58 @@ VerifyTimeBasedPayload (
     }
 
     //
-    // Ready to verify Pkcs7 SignedData. Go through KEK Signature Database to find out X.509 CertList.
+    // Verify the signature trusts to a KEK: present the KEK signature database
+    // (one GetVariable region of contiguous EFI_SIGNATURE_LIST entries) as the
+    // NULL-terminated array shape Pkcs7VerifyContent() expects, and let it walk
+    // every X.509 entry (EFI_CERT_X509 and EFI_CERT_V2_X509 lists) as a
+    // candidate trust anchor, verifying the PKCS#7 SignedData over the
+    // serialized NewData (ContentValidationVerifyByData -> Pkcs7Verify()). KEK
+    // has no dbx, so RevokedDb is NULL; no measurement hook is needed.
     //
-    KekDataSize = (UINT32)DataSize;
-    CertList    = (EFI_SIGNATURE_LIST *)Data;
-    while ((KekDataSize > 0) && (KekDataSize >= CertList->SignatureListSize)) {
-      //
-      // A KEK may be enrolled as EFI_CERT_X509_GUID (V1, with a leading
-      // SignatureOwner GUID) or EFI_CERT_V2_X509_GUID (V2, no SignatureOwner),
-      // both of which CheckSignatureListFormat() accepts. Handle either layout.
-      //
-      IsV2Cert = CompareGuid (&CertList->SignatureType, &gEfiCertV2X509Guid);
-      if (CompareGuid (&CertList->SignatureType, &gEfiCertX509Guid) || IsV2Cert) {
-        Cert      = (EFI_SIGNATURE_DATA *)((UINT8 *)CertList + sizeof (EFI_SIGNATURE_LIST) + CertList->SignatureHeaderSize);
-        CertCount = (CertList->SignatureListSize - sizeof (EFI_SIGNATURE_LIST) - CertList->SignatureHeaderSize) / CertList->SignatureSize;
-        for (Index = 0; Index < CertCount; Index++) {
-          //
-          // Iterate each Signature Data Node within this CertList for a verify
-          //
-          if (IsV2Cert) {
-            TrustedCert     = (UINT8 *)Cert;
-            TrustedCertSize = CertList->SignatureSize;
-          } else {
-            TrustedCert     = Cert->SignatureData;
-            TrustedCertSize = CertList->SignatureSize - sizeof (EFI_GUID);
-          }
+    SigDbArray = SigListRegionToArray ((UINT8 *)Data, DataSize);
+    if (SigDbArray != NULL) {
+      VerifyStatus = (BOOLEAN)(Pkcs7VerifyContent (
+                                 SigData,
+                                 SigDataSize,
+                                 NewData,
+                                 NewDataSize,
+                                 ContentValidationVerifyByData,
+                                 SigDbArray,
+                                 NULL,
+                                 NULL
+                                 ) == EFI_SUCCESS);
+      FreePool (SigDbArray);
+    }
 
-          //
-          // Verify Pkcs7 SignedData via Pkcs7Verify library.
-          //
-          VerifyStatus = Pkcs7Verify (
-                           SigData,
-                           SigDataSize,
-                           TrustedCert,
-                           TrustedCertSize,
-                           NewData,
-                           NewDataSize
-                           );
-          if (VerifyStatus) {
-            goto Exit;
-          }
-
-          Cert = (EFI_SIGNATURE_DATA *)((UINT8 *)Cert + CertList->SignatureSize);
-        }
-      }
-
-      KekDataSize -= CertList->SignatureListSize;
-      CertList     = (EFI_SIGNATURE_LIST *)((UINT8 *)CertList + CertList->SignatureListSize);
+    if (VerifyStatus) {
+      goto Exit;
     }
   } else if (AuthVarType == AuthVarTypePayload) {
-    CertList = (EFI_SIGNATURE_LIST *)PayloadPtr;
-    Cert     = (EFI_SIGNATURE_DATA *)((UINT8 *)CertList + sizeof (EFI_SIGNATURE_LIST) + CertList->SignatureHeaderSize);
     //
-    // The certificate is carried in the payload (self-signed PK enrollment) and
-    // may be EFI_CERT_X509_GUID (V1, with a leading SignatureOwner GUID) or
-    // EFI_CERT_V2_X509_GUID (V2, no SignatureOwner), both of which
-    // CheckSignatureListFormat() accepts. Locate it according to the list type.
+    // Verify the signature trusts to a certificate carried in the payload itself
+    // (self-signed enrollment). Present the payload signature database as the
+    // NULL-terminated array shape Pkcs7VerifyContent() expects and let it walk
+    // every X.509 entry (EFI_CERT_X509 and EFI_CERT_V2_X509 lists) as a
+    // candidate trust anchor, verifying the PKCS#7 SignedData over the serialized
+    // NewData (ContentValidationVerifyByData -> Pkcs7Verify()). This path has no
+    // dbx, so RevokedDb is NULL; no measurement hook is needed.
     //
-    if (CompareGuid (&CertList->SignatureType, &gEfiCertV2X509Guid)) {
-      TrustedCert     = (UINT8 *)Cert;
-      TrustedCertSize = CertList->SignatureSize;
+    SigDbArray = SigListRegionToArray (PayloadPtr, PayloadSize);
+    if (SigDbArray != NULL) {
+      VerifyStatus = (BOOLEAN)(Pkcs7VerifyContent (
+                                 SigData,
+                                 SigDataSize,
+                                 NewData,
+                                 NewDataSize,
+                                 ContentValidationVerifyByData,
+                                 SigDbArray,
+                                 NULL,
+                                 NULL
+                                 ) == EFI_SUCCESS);
+      FreePool (SigDbArray);
     } else {
-      TrustedCert     = Cert->SignatureData;
-      TrustedCertSize = CertList->SignatureSize - sizeof (EFI_GUID);
+      VerifyStatus = FALSE;
     }
-
-    //
-    // Verify Pkcs7 SignedData via Pkcs7Verify library.
-    //
-    VerifyStatus = Pkcs7Verify (
-                     SigData,
-                     SigDataSize,
-                     TrustedCert,
-                     TrustedCertSize,
-                     NewData,
-                     NewDataSize
-                     );
   } else {
     return EFI_SECURITY_VIOLATION;
   }
